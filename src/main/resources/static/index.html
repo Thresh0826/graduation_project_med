@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>医学影像科研平台 - 可视化预览</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .viewer-container { background: #000; border-radius: 8px; position: relative; overflow: hidden; }
+        canvas { display: block; margin: 0 auto; cursor: crosshair; }
+        .info-overlay { position: absolute; top: 10px; left: 10px; color: #0f0; font-family: monospace; pointer-events: none; }
+    </style>
+</head>
+<body class="bg-gray-900 min-h-screen text-gray-100 p-4">
+<div class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- 左侧：管理面板 -->
+    <div class="lg:col-span-1 space-y-6">
+        <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
+            <h2 class="text-xl font-bold mb-4 flex items-center">
+                <span class="w-3 h-3 bg-blue-500 rounded-full mr-2"></span>影像管理
+            </h2>
+            <input type="file" id="fileInput" class="hidden">
+            <button onclick="document.getElementById('fileInput').click()" class="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded-lg transition mb-2">上传新影像 (.nii/.npz)</button>
+            <div id="uploadStatus" class="text-sm text-gray-400 text-center mb-4"></div>
+
+            <div class="max-h-[500px] overflow-y-auto space-y-2" id="imageList">
+                <!-- 列表会在这里刷新 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧：查看器 -->
+    <div class="lg:col-span-2 space-y-6">
+        <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
+            <h2 class="text-xl font-bold mb-4">影像查看器 <span id="curFileName" class="text-sm font-normal text-gray-400"></span></h2>
+
+            <div class="viewer-container mb-4">
+                <div class="info-overlay" id="overlay">
+                    Layer: 0 / 0<br>
+                    WW: 400 WL: 40
+                </div>
+                <canvas id="mainCanvas" width="512" height="512"></canvas>
+            </div>
+
+            <!-- 控制栏 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-900 p-4 rounded-lg">
+                <div class="space-y-2">
+                    <label class="text-xs text-gray-400 block">切换切片 (Layer)</label>
+                    <input type="range" id="sliceRange" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" min="0" value="0">
+                </div>
+                <div class="space-y-2">
+                    <label class="text-xs text-gray-400 block">窗宽/窗位 (WW / WL)</label>
+                    <div class="flex gap-2">
+                        <input type="number" id="wwInput" value="400" class="w-1/2 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-green-400" title="Window Width">
+                        <input type="number" id="wlInput" value="40" class="w-1/2 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-green-400" title="Window Level">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API = "/api/image";
+    let state = {
+        file: "",
+        maxZ: 0,
+        curZ: 0,
+        ww: 400,
+        wl: 40
+    };
+
+    const canvas = document.getElementById('mainCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // 1. 获取列表
+    async function loadList() {
+        const res = await fetch(`${API}/list`);
+        const data = await res.json();
+        document.getElementById('imageList').innerHTML = data.map(img => `
+                <div onclick="openImage('${img.fileName}', ${img.dimZ})" class="p-3 bg-gray-700 hover:bg-gray-600 rounded-lg cursor-pointer border border-transparent hover:border-blue-500 transition">
+                    <div class="font-medium text-sm truncate">${img.fileName}</div>
+                    <div class="text-xs text-gray-400 mt-1">${img.dimX}x${img.dimY}x${img.dimZ} | ${img.format}</div>
+                </div>
+            `).join('');
+    }
+
+    // 2. 打开影像
+    function openImage(name, maxZ) {
+        state.file = name;
+        state.maxZ = maxZ;
+        state.curZ = Math.floor(maxZ / 2);
+        document.getElementById('curFileName').innerText = " - " + name;
+        document.getElementById('sliceRange').max = maxZ - 1;
+        document.getElementById('sliceRange').value = state.curZ;
+        draw();
+    }
+
+    // 3. 核心：绘制影像到 Canvas
+    async function draw() {
+        if(!state.file) return;
+
+        const url = `${API}/view?file=${state.file}&index=${state.curZ}&ww=${state.ww}&wl=${state.wl}`;
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+
+            if(data.image) {
+                const img = new Image();
+                img.onload = () => {
+                    // 清除画布并绘制
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                    // 更新覆盖文字
+                    document.getElementById('overlay').innerHTML = `
+                            Layer: ${state.curZ + 1} / ${state.maxZ}<br>
+                            WW: ${state.ww} WL: ${state.wl}<br>
+                            File: ${state.file}
+                        `;
+                };
+                img.src = "data:image/png;base64," + data.image;
+            }
+        } catch(e) { console.error("绘图失败", e); }
+    }
+
+    // 4. 事件监听
+    document.getElementById('sliceRange').addEventListener('input', (e) => {
+        state.curZ = parseInt(e.target.value);
+        draw();
+    });
+
+    document.getElementById('wwInput').addEventListener('change', (e) => {
+        state.ww = parseFloat(e.target.value);
+        draw();
+    });
+
+    document.getElementById('wlInput').addEventListener('change', (e) => {
+        state.wl = parseFloat(e.target.value);
+        draw();
+    });
+
+    // 5. 处理上传
+    document.getElementById('fileInput').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        const formData = new FormData();
+        formData.append('file', file);
+        document.getElementById('uploadStatus').innerText = "正在解析并存入云端...";
+        const res = await fetch(`${API}/upload`, {
+            method: 'POST',
+            body: formData // 浏览器会自动处理 Content-Type 和 Boundary
+        });
+        if(res.ok) {
+            document.getElementById('uploadStatus').innerText = "上传成功";
+            loadList();
+        }
+    });
+
+    loadList(); // 初始化加载
+</script>
+</body>
+</html>
