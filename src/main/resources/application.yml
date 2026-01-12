@@ -15,7 +15,7 @@ spring:
 # 影像存储路径配置
 file:
   # 建议还是先用绝对路径确保成功，或者确保这个文件夹已手动创建
-  upload-dir: /root/graduation/med_data
+  upload-dir: /root/gra_med/med_data
 
 # 修正 MyBatis 的配置键（从 mybatis-plus 改为 mybatis）
 mybatis:

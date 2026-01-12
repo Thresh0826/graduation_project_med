@@ -25,7 +25,8 @@ app.add_middleware(
 
 # --- 配置 ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "test_data")
+# 向上跳一级找到 med_data 目录
+DATA_DIR = os.path.join(os.path.dirname(BASE_DIR), "med_data")
 
 # 【核心升级】内存缓存：最多缓存 3 个大型 3D 影像对象
 # 这样切换切片时不需要重复读取磁盘，速度提升 100 倍
