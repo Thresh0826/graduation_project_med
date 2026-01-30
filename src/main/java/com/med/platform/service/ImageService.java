@@ -63,4 +63,15 @@ public class ImageService {
     public List<MedImage> getAllImages() {
         return imageMapper.findAll();
     }
+
+    public void deleteImage(Long id) {
+        // 逻辑非常简单：直接喊“写账员”（Mapper）去把这条记录的状态改了
+        int result = imageMapper.logicalDelete(id);
+
+
+        if (result == 0) {
+            throw new RuntimeException("删除失败：该影像记录不存在或已被删除。");
+        }
+    }
+
 }

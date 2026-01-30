@@ -1,0 +1,9 @@
+# 云端生产环境配置
+file:
+  # 使用你服务器上的绝对路径
+  upload-dir: /root/gra_med/med_data
+
+python:
+  service:
+    # 如果 Python 也在同台服务器，可以用 localhost；如果不在，请填写服务器 IP
+    url: http://localhost:8000

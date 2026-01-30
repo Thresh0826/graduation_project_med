@@ -60,4 +60,14 @@ public class ImageController {
         }
     }
 
+    @DeleteMapping("/delete/{id}")
+    public ResponseEntity<?> delete(@PathVariable Long id) {
+        try {
+            imageService.deleteImage(id); // 稍后在 Service 中实现
+            return ResponseEntity.ok("删除成功");
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("删除失败: " + e.getMessage());
+        }
+    }
+
 }

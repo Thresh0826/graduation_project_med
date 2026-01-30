@@ -1,0 +1,8 @@
+# 本地开发环境配置
+file:
+  # 使用相对路径，会在你的项目根目录下自动创建 med_data 文件夹
+  upload-dir: ./med_data
+
+python:
+  service:
+    url: http://127.0.0.1:8000

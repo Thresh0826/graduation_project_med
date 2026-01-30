@@ -1,23 +1,24 @@
-server:
-  port: 8080
-
 spring:
+  profiles:
+    # --- 核心开关 ---
+    # 本地开发时写 dev，部署到云端前改为 prod
+    active: dev
+
+  # 数据库配置（本地和云端如果共用一个数据库则写在这里）
   datasource:
     url: jdbc:mysql://localhost:3306/med_viewer_db?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=GMT%2B8
     username: root
-    password: 123456 # 改回你的密码
+    password: 123456
     driver-class-name: com.mysql.cj.jdbc.Driver
+
   servlet:
     multipart:
       max-file-size: 500MB
       max-request-size: 500MB
 
-# 影像存储路径配置
-file:
-  # 建议还是先用绝对路径确保成功，或者确保这个文件夹已手动创建
-  upload-dir: /root/gra_med/med_data
-
-# 修正 MyBatis 的配置键（从 mybatis-plus 改为 mybatis）
 mybatis:
   configuration:
     map-underscore-to-camel-case: true
+
+server:
+  port: 8080

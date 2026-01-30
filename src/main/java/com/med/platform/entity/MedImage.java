@@ -13,4 +13,9 @@ public class MedImage {
     private Integer dimY;
     private Integer dimZ;
     private LocalDateTime createTime;
+
+    // --- 新增字段 ---
+    private Integer isDeleted;
+    private String patientId;
+    private String modality;
 }
