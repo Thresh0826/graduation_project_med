@@ -3,13 +3,16 @@ package com.med.platform.controller;
 import com.med.platform.config.LogAction;
 import com.med.platform.entity.SysUser;
 import com.med.platform.service.UserService;
-import com.med.platform.mapper.SysUserMapper; // 引入 Mapper
+import com.med.platform.mapper.SysUserMapper; 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import jakarta.servlet.http.HttpSession;
 import java.util.Map;
+import java.util.Base64;
 
 @RestController
 @RequestMapping("/api/user")
@@ -21,6 +24,9 @@ public class UserController {
     
     @Autowired
     private SysUserMapper userMapper;
+    
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     @PostMapping("/login")
     @LogAction(module = "系统接入", action = "登录") 
@@ -50,12 +56,10 @@ public class UserController {
             return ResponseEntity.status(401).body("用户未登录或会话已过期。");
         }
         
-        // 【核心修复】每次获取当前用户时，从数据库刷新最新状态
-        // 这样组长在后台同意了申请，用户刷新页面就能立刻看到状态变化，无需重新登录
         SysUser latestUser = userMapper.findById(user.getId());
         if (latestUser != null) {
             latestUser.setPassword(null);
-            session.setAttribute("user", latestUser); // 更新 session
+            session.setAttribute("user", latestUser);
             return ResponseEntity.ok(latestUser);
         }
         
@@ -65,7 +69,63 @@ public class UserController {
     @PostMapping("/logout")
     @LogAction(module = "系统接入", action = "退出")
     public ResponseEntity<?> logout(HttpSession session) {
-        session.invalidate();
+        session.invalidate(); 
         return ResponseEntity.ok("退出成功");
+    }
+    
+    // ====== 个人信息维护 ======
+    
+    @PutMapping("/profile/name")
+    @LogAction(module = "个人中心", action = "修改姓名")
+    public ResponseEntity<?> updateName(@RequestParam String realName, HttpSession session) {
+        SysUser user = (SysUser) session.getAttribute("user");
+        if (user == null) return ResponseEntity.status(401).body("请先登录");
+        
+        try {
+            userMapper.updateRealName(user.getId(), realName);
+            return ResponseEntity.ok("姓名修改成功");
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("修改失败: " + e.getMessage());
+        }
+    }
+    
+    @PutMapping("/profile/password")
+    @LogAction(module = "个人中心", action = "修改密码")
+    public ResponseEntity<?> updatePassword(@RequestBody Map<String, String> params, HttpSession session) {
+        SysUser sessionUser = (SysUser) session.getAttribute("user");
+        if (sessionUser == null) return ResponseEntity.status(401).body("请先登录");
+        
+        String oldPwd = params.get("oldPassword");
+        String newPwd = params.get("newPassword");
+        
+        // 校验旧密码
+        SysUser dbUser = userMapper.findById(sessionUser.getId());
+        if (!passwordEncoder.matches(oldPwd, dbUser.getPassword())) {
+            return ResponseEntity.badRequest().body("原密码错误");
+        }
+        
+        try {
+            userMapper.updatePassword(sessionUser.getId(), passwordEncoder.encode(newPwd));
+            return ResponseEntity.ok("密码修改成功，请重新登录");
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("修改失败: " + e.getMessage());
+        }
+    }
+    
+    @PostMapping("/profile/avatar")
+    @LogAction(module = "个人中心", action = "修改头像")
+    public ResponseEntity<?> updateAvatar(@RequestParam("file") MultipartFile file, HttpSession session) {
+        SysUser user = (SysUser) session.getAttribute("user");
+        if (user == null) return ResponseEntity.status(401).body("请先登录");
+        
+        try {
+            byte[] bytes = file.getBytes();
+            String base64Image = "data:" + file.getContentType() + ";base64," + Base64.getEncoder().encodeToString(bytes);
+            
+            userMapper.updateAvatar(user.getId(), base64Image);
+            return ResponseEntity.ok(base64Image);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("头像修改失败: " + e.getMessage());
+        }
     }
 }

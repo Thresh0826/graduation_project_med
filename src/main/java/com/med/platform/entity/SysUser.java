@@ -10,10 +10,11 @@ public class SysUser {
     private String realName;
     private String role;     
 
-    // --- 新增课题组相关字段 ---
-    private Long groupId;    // 所属课题组ID (null表示未加入)
-    private Integer isLeader; // 是否为组长: 1-是, 0-否
+    private Long groupId;    
+    private Integer isLeader; 
     
-    // 连表查询使用的冗余字段（不映射到 sys_user 表）
+    // 【新增 Requirement III】头像路径/Base64
+    private String avatar;
+    
     private String groupName;
 }

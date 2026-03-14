@@ -27,7 +27,8 @@ public interface SysGroupMapper {
     @Select("SELECT * FROM sys_group WHERE id = #{id}")
     SysGroup findById(Long id);
     
-    @Update("UPDATE sys_group SET name = #{name}, direction = #{direction}, description = #{description} WHERE id = #{id}")
+    // 【核心修复】增加 leader_id 的更新，解决新增组长不同步问题
+    @Update("UPDATE sys_group SET name = #{name}, direction = #{direction}, description = #{description}, leader_id = #{leaderId} WHERE id = #{id}")
     int update(SysGroup group);
     
     @Delete("DELETE FROM sys_group WHERE id = #{id}")

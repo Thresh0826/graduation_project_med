@@ -34,6 +34,18 @@
             width: 100%; height: 4px; cursor: pointer; background: #334155; border-radius: 2px;
         }
         .modal-bg { backdrop-filter: blur(5px); }
+
+        input[type=file]::file-selector-button {
+            border: none;
+            background: #38bdf8;
+            padding: 8px 12px;
+            border-radius: 4px;
+            color: #fff;
+            cursor: pointer;
+            transition: background .2s ease-in-out;
+            margin-right: 12px;
+        }
+        input[type=file]::file-selector-button:hover { background: #0ea5e9; }
     </style>
 </head>
 <body class="bg-[#0f172a] text-slate-200 flex h-screen overflow-hidden font-sans selection:bg-cyan-500 selection:text-white">
@@ -73,7 +85,7 @@
 
         <button onclick="switchModule('groups')" id="nav-groups" class="nav-item group w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all text-slate-400 hover:bg-slate-700/50 hover:text-slate-100">
             <i class="fa-solid fa-users w-6 text-center text-lg transition group-hover:text-indigo-400"></i>
-            <span class="sidebar-text ml-3">课题组管理</span>
+            <span class="sidebar-text ml-3">课题组大厅</span>
         </button>
         <button onclick="switchModule('messages')" id="nav-messages" class="nav-item group w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all text-slate-400 hover:bg-slate-700/50 hover:text-slate-100 relative">
             <i class="fa-solid fa-envelope w-6 text-center text-lg transition group-hover:text-pink-400"></i>
@@ -90,21 +102,28 @@
             <i class="fa-solid fa-clock-rotate-left w-6 text-center text-lg transition group-hover:text-amber-400"></i>
             <span class="sidebar-text ml-3">操作记录</span>
         </button>
+
+        <!-- 管理员专属菜单 -->
+        <div id="admin-menu" class="hidden">
+            <div class="my-2 border-t border-slate-700/50 sidebar-text"></div>
+            <button onclick="switchModule('admin')" id="nav-admin" class="nav-item group w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all text-amber-400/70 hover:bg-slate-700/50 hover:text-amber-400">
+                <i class="fa-solid fa-screwdriver-wrench w-6 text-center text-lg transition group-hover:text-amber-300"></i>
+                <span class="sidebar-text ml-3">系统运维管理</span>
+            </button>
+        </div>
     </nav>
 
-    <!-- 用户信息 -->
-    <div class="p-4 border-t border-slate-700/50 bg-[#1e293b]">
+    <!-- 用户信息 (点击打开个人中心) -->
+    <div class="p-4 border-t border-slate-700/50 bg-[#1e293b] cursor-pointer hover:bg-slate-700/50 transition group" onclick="openProfileModal()">
         <div class="flex items-center">
-            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-lg ring-2 ring-slate-700">
-                <i class="fa-solid fa-user-astronaut"></i>
+            <div class="w-10 h-10 rounded-xl overflow-hidden bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-lg ring-2 ring-slate-700 relative">
+                <img id="sidebar-avatar" src="" class="hidden w-full h-full object-cover absolute inset-0 z-10">
+                <i class="fa-solid fa-user-astronaut relative z-0"></i>
             </div>
-            <div class="sidebar-text ml-3 overflow-hidden flex-1">
+            <div class="sidebar-text ml-3 overflow-hidden flex-1 group-hover:opacity-80">
                 <p class="text-sm font-semibold text-slate-200 truncate" id="display-username">Loading...</p>
                 <p class="text-xs text-slate-500 truncate mt-0.5" id="display-role">科研人员</p>
             </div>
-            <button onclick="logout()" class="sidebar-text ml-2 text-slate-500 hover:text-red-400 transition p-2 rounded-lg hover:bg-slate-700/50" title="退出登录">
-                <i class="fa-solid fa-power-off"></i>
-            </button>
         </div>
     </div>
 </div>
@@ -119,6 +138,9 @@
             <div id="group-status-badge" class="flex items-center px-3 py-1 rounded-full bg-slate-800/50 border border-slate-700/50 text-xs text-slate-400">
                 <i class="fa-solid fa-users-slash mr-2 text-gray-500"></i>无课题组
             </div>
+            <button onclick="logout()" class="text-slate-500 hover:text-red-400 transition" title="退出登录">
+                <i class="fa-solid fa-power-off"></i>
+            </button>
         </div>
     </header>
 
@@ -155,7 +177,7 @@
             </div>
         </div>
 
-        <!-- 1. 影像管理模块 -->
+        <!-- 1. 影像管理模块 (Requirement III 修复) -->
         <div id="module-management" class="hidden space-y-6 fade-in">
             <div class="flex justify-between items-center glass-panel p-6 rounded-2xl">
                 <div>
@@ -173,7 +195,9 @@
                     <thead class="bg-slate-800/80 text-slate-400 text-xs uppercase tracking-wider font-semibold">
                     <tr>
                         <th class="px-6 py-4">文件名</th>
+                        <th class="px-6 py-4">数据类型</th> <!-- 【修复】单独分离的数据类型列 -->
                         <th class="px-6 py-4">归属课题组</th>
+                        <th class="px-6 py-4">尺寸 (Voxels)</th>
                         <th class="px-6 py-4">解析状态</th>
                         <th class="px-6 py-4">权限</th>
                         <th class="px-6 py-4">上传时间</th>
@@ -206,7 +230,7 @@
 
             <div id="analysis-content" class="hidden flex-1 flex flex-col bg-black rounded-2xl border border-slate-700 relative overflow-hidden shadow-2xl">
                 <div class="flex-1 flex items-center justify-center relative bg-black/50">
-                    <img id="medViewer" class="max-h-full max-w-full object-contain" src="" alt=""/>
+                    <img id="medViewer" class="max-h-full max-w-full object-contain" src="" alt="请调节滑块或等待..."/>
                 </div>
                 <!-- 底部控制栏 -->
                 <div class="bg-slate-900/90 backdrop-blur border-t border-slate-800 p-4 space-y-4 flex-shrink-0">
@@ -245,58 +269,19 @@
             </div>
         </div>
 
-        <!-- 4. 课题组管理模块 -->
+        <!-- 4. 课题组管理模块 (Requirement II 布局重构) -->
         <div id="module-groups" class="hidden space-y-6 fade-in h-full flex flex-col">
             <div class="flex justify-between items-center glass-panel p-6 rounded-2xl flex-shrink-0">
                 <div>
                     <h3 class="text-2xl font-bold text-slate-100">课题组大厅</h3>
-                    <p class="text-slate-400 text-sm mt-1">寻找并加入您的科研团队</p>
+                    <p class="text-slate-400 text-sm mt-1">寻找并加入您的科研团队 (点击卡片查看详情)</p>
                 </div>
             </div>
 
-            <div class="flex-1 overflow-hidden flex gap-6">
-                <!-- 左侧：列表 -->
-                <div class="w-2/3 glass-panel rounded-2xl overflow-y-auto border-t border-slate-700/50 flex flex-col">
-                    <table class="w-full text-left">
-                        <thead class="bg-slate-800/80 text-slate-400 text-xs uppercase tracking-wider font-semibold sticky top-0 z-10">
-                        <tr>
-                            <th class="px-6 py-4">课题组名称</th>
-                            <th class="px-6 py-4">组长</th>
-                            <th class="px-6 py-4">主要方向</th>
-                            <th class="px-6 py-4 text-right">操作</th>
-                        </tr>
-                        </thead>
-                        <tbody id="groupTableBody" class="divide-y divide-slate-800 text-sm text-slate-300"></tbody>
-                    </table>
-                </div>
-
-                <!-- 右侧：详情面板 -->
-                <div class="w-1/3 glass-panel rounded-2xl p-6 border-t border-slate-700/50 flex flex-col overflow-y-auto">
-                    <div id="group-detail-empty" class="h-full flex flex-col items-center justify-center text-slate-500">
-                        <i class="fa-solid fa-users text-5xl mb-4 opacity-50"></i>
-                        <p>请在左侧列表中点击"查看"以显示详情</p>
-                    </div>
-                    <div id="group-detail-content" class="hidden space-y-6">
-                        <div class="flex items-center space-x-4 border-b border-slate-700 pb-6">
-                            <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-2xl font-bold text-white shadow-lg">
-                                <i class="fa-solid fa-atom"></i>
-                            </div>
-                            <div>
-                                <h2 id="gd-name" class="text-2xl font-bold text-white"></h2>
-                                <p id="gd-direction" class="text-indigo-400 text-sm mt-1"></p>
-                            </div>
-                        </div>
-                        <div>
-                            <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">课题组简介</h4>
-                            <p id="gd-desc" class="text-sm text-slate-300 leading-relaxed bg-slate-800/50 p-4 rounded-xl"></p>
-                        </div>
-                        <div>
-                            <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">团队成员</h4>
-                            <div id="gd-members" class="space-y-2">
-                                <!-- Members list -->
-                            </div>
-                        </div>
-                    </div>
+            <!-- 平铺卡片布局 -->
+            <div class="flex-1 overflow-y-auto pr-2 pb-10">
+                <div id="groupsGrid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    <!-- 动态渲染的卡片 -->
                 </div>
             </div>
         </div>
@@ -311,9 +296,7 @@
             <div class="flex-1 glass-panel rounded-2xl overflow-y-auto border-t border-slate-700/50">
                 <table class="w-full text-left">
                     <thead class="bg-slate-800/80 text-slate-400 text-xs uppercase tracking-wider font-semibold sticky top-0 z-10">
-                    <tr id="msg-table-head">
-                        <!-- Dynamic header -->
-                    </tr>
+                    <tr id="msg-table-head"></tr>
                     </thead>
                     <tbody id="msgTableBody" class="divide-y divide-slate-800 text-sm text-slate-300"></tbody>
                 </table>
@@ -338,16 +321,83 @@
                 </table>
             </div>
         </div>
+
+        <!-- 7. 系统运维管理 (仅管理员可见) -->
+        <div id="module-admin" class="hidden space-y-6 fade-in">
+            <h3 class="text-2xl font-bold mb-6 text-slate-100"><i class="fa-solid fa-screwdriver-wrench text-amber-400 mr-2"></i>系统运维控制台</h3>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- 新增课题组 -->
+                <div class="glass-panel p-6 rounded-2xl border-t border-slate-700/50">
+                    <h4 class="text-lg font-semibold text-white mb-4 border-b border-slate-700 pb-2">新增课题组</h4>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-slate-400 text-sm mb-1">课题组名称 *</label>
+                            <input type="text" id="admin-group-name" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-amber-500">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 text-sm mb-1">研究方向 *</label>
+                            <input type="text" id="admin-group-direction" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-amber-500">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 text-sm mb-1">组长指定 (可选)</label>
+                            <select id="admin-group-leader" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-amber-500">
+                                <option value="">暂不指定</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 text-sm mb-1">简介 (可选)</label>
+                            <textarea id="admin-group-desc" rows="3" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-amber-500"></textarea>
+                        </div>
+                        <button onclick="adminAddGroup()" class="w-full bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold py-2 rounded-lg transition mt-2">创建课题组</button>
+                    </div>
+                </div>
+
+                <!-- 新增人员 -->
+                <div class="glass-panel p-6 rounded-2xl border-t border-slate-700/50">
+                    <h4 class="text-lg font-semibold text-white mb-4 border-b border-slate-700 pb-2">新增人员</h4>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-slate-400 text-sm mb-1">登录账号 *</label>
+                            <input type="text" id="admin-user-username" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 text-sm mb-1">显示姓名 *</label>
+                            <input type="text" id="admin-user-realname" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 text-sm mb-1">初始密码 *</label>
+                            <input type="password" id="admin-user-pwd" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500" value="123456">
+                            <p class="text-[10px] text-slate-500 mt-1">系统采用 BCrypt(salt=10) 强加密存储。建议默认 123456，由用户后续修改。</p>
+                        </div>
+                        <div class="flex space-x-4">
+                            <div class="flex-1">
+                                <label class="block text-slate-400 text-sm mb-1">分配课题组 (可选)</label>
+                                <select id="admin-user-group" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500">
+                                    <option value="">暂不分配</option>
+                                </select>
+                            </div>
+                            <div class="flex items-end pb-2">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="checkbox" id="admin-user-isleader" class="form-checkbox h-5 w-5 text-blue-500 rounded border-slate-600 bg-slate-700">
+                                    <span class="ml-2 text-slate-300 text-sm">设为队长(组长)</span>
+                                </label>
+                            </div>
+                        </div>
+                        <button onclick="adminAddUser()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg transition mt-2">创建账号</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </main>
 
-<!-- 【新增】上传共享策略选择弹窗 -->
+<!-- 上传共享策略选择弹窗 -->
 <div id="uploadModal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
     <div class="absolute inset-0 bg-slate-950/80 modal-bg" onclick="closeUploadModal()"></div>
     <div class="relative bg-slate-900 border border-slate-700 shadow-2xl rounded-2xl w-[400px] p-6 transform transition-all scale-100 opacity-100">
         <h3 class="text-xl font-bold text-white mb-2"><i class="fa-solid fa-share-nodes text-blue-400 mr-2"></i>数据共享策略</h3>
         <p class="text-slate-400 text-sm mb-6">请选择该影像数据的可见范围：</p>
-
         <div class="space-y-3 mb-6">
             <label class="flex items-center p-4 border border-slate-700 rounded-xl cursor-pointer hover:bg-slate-800 transition">
                 <input type="radio" name="uploadVis" value="2" class="w-4 h-4 text-blue-500 bg-slate-700 border-slate-600 focus:ring-blue-600">
@@ -364,13 +414,99 @@
                 </div>
             </label>
         </div>
-
         <div class="flex justify-end space-x-3 mt-8">
             <button onclick="closeUploadModal()" class="px-4 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition text-sm">取消</button>
             <button onclick="confirmUpload()" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg transition shadow-lg text-sm font-medium">确认上传</button>
         </div>
     </div>
 </div>
+
+<!-- 个人信息弹窗 -->
+<div id="profileModal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
+    <div class="absolute inset-0 bg-slate-950/80 modal-bg" onclick="closeProfileModal()"></div>
+    <div class="relative bg-[#1e293b] border border-slate-700 shadow-2xl rounded-2xl w-[450px] p-0 transform transition-all overflow-hidden">
+        <div class="h-24 bg-gradient-to-r from-blue-600 to-indigo-600 relative">
+            <button onclick="closeProfileModal()" class="absolute top-4 right-4 text-white/70 hover:text-white bg-black/20 rounded-full w-8 h-8 flex items-center justify-center transition"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="relative flex justify-center -mt-12 mb-4 group">
+            <div class="w-24 h-24 rounded-full border-4 border-[#1e293b] bg-slate-800 shadow-lg overflow-hidden flex items-center justify-center relative cursor-pointer" onclick="document.getElementById('avatarInput').click()">
+                <img id="profile-avatar-img" src="" class="hidden w-full h-full object-cover z-10">
+                <i class="fa-solid fa-user-astronaut text-3xl text-slate-400 z-0"></i>
+                <div class="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center z-20 transition">
+                    <i class="fa-solid fa-camera text-white text-xl"></i>
+                </div>
+            </div>
+            <input type="file" id="avatarInput" accept="image/*" class="hidden" onchange="uploadAvatar(event)">
+        </div>
+        <div class="px-8 pb-8">
+            <div class="text-center mb-6">
+                <h3 class="text-2xl font-bold text-white flex items-center justify-center">
+                    <span id="prof-realname">User</span>
+                    <button onclick="editName()" class="ml-2 text-slate-500 hover:text-blue-400 text-sm"><i class="fa-solid fa-pen-to-square"></i></button>
+                </h3>
+                <p class="text-slate-400 text-sm mt-1" id="prof-username">@username</p>
+                <div class="mt-3 inline-block px-3 py-1 bg-slate-800 border border-slate-700 rounded-full text-xs text-indigo-400">
+                    <i class="fa-solid fa-users mr-1"></i> <span id="prof-group">无课题组</span>
+                </div>
+            </div>
+            <div class="border-t border-slate-700/50 pt-6">
+                <h4 class="text-sm font-semibold text-slate-300 mb-4">账户安全</h4>
+                <div id="pwd-change-section" class="hidden bg-slate-900/50 p-4 rounded-xl border border-slate-700/50 mb-4">
+                    <input type="password" id="old-pwd" placeholder="原密码" class="w-full bg-slate-800 border border-slate-700 rounded text-sm px-3 py-2 text-white mb-2 focus:border-blue-500 outline-none">
+                    <input type="password" id="new-pwd" placeholder="新密码" class="w-full bg-slate-800 border border-slate-700 rounded text-sm px-3 py-2 text-white mb-3 focus:border-blue-500 outline-none">
+                    <div class="flex space-x-2">
+                        <button onclick="submitPwdChange()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-xs py-2 rounded transition">确认修改</button>
+                        <button onclick="togglePwdSection()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs py-2 rounded transition">取消</button>
+                    </div>
+                </div>
+                <button id="pwd-toggle-btn" onclick="togglePwdSection()" class="w-full flex items-center justify-between p-3 rounded-xl bg-slate-800/50 hover:bg-slate-800 border border-transparent hover:border-slate-700 transition text-slate-300 text-sm">
+                    <span><i class="fa-solid fa-key mr-2 text-amber-500"></i>修改登录密码</span>
+                    <i class="fa-solid fa-chevron-right text-xs"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 【新增 Requirement II】课题组详情弹窗 -->
+<div id="groupModal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
+    <div class="absolute inset-0 bg-slate-950/80 modal-bg" onclick="closeGroupModal()"></div>
+    <div class="relative bg-[#1e293b] border border-slate-700 shadow-2xl rounded-2xl w-[600px] max-h-[80vh] flex flex-col transform transition-all overflow-hidden">
+
+        <div class="h-28 bg-gradient-to-r from-indigo-600 to-purple-600 relative flex-shrink-0">
+            <button onclick="closeGroupModal()" class="absolute top-4 right-4 text-white/70 hover:text-white bg-black/20 rounded-full w-8 h-8 flex items-center justify-center transition"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <div class="relative flex px-8 -mt-10 mb-4 flex-shrink-0">
+            <div class="w-20 h-20 rounded-xl border-4 border-[#1e293b] bg-slate-800 shadow-lg flex items-center justify-center text-3xl text-indigo-400 z-10">
+                <i class="fa-solid fa-atom"></i>
+            </div>
+            <div class="ml-4 mt-12 flex-1 flex justify-between items-start">
+                <div>
+                    <h2 id="modal-gd-name" class="text-2xl font-bold text-white leading-tight"></h2>
+                    <p id="modal-gd-direction" class="text-indigo-400 text-sm mt-0.5"></p>
+                </div>
+                <!-- 动态操作按钮区 -->
+                <div id="modal-gd-action" class="mt-1"></div>
+            </div>
+        </div>
+
+        <!-- 可滚动内容区 -->
+        <div class="px-8 pb-8 overflow-y-auto custom-scrollbar">
+            <div class="mb-6">
+                <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center"><i class="fa-solid fa-circle-info mr-2"></i>课题组简介</h4>
+                <div id="modal-gd-desc" class="text-sm text-slate-300 leading-relaxed bg-slate-900/50 p-4 rounded-xl border border-slate-700/50 min-h-[60px]"></div>
+            </div>
+            <div>
+                <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center"><i class="fa-solid fa-users mr-2"></i>团队成员</h4>
+                <div id="modal-gd-members" class="grid grid-cols-2 gap-3">
+                    <!-- Members list populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 
 <script>
     let isSidebarCollapsed = false;
@@ -392,16 +528,23 @@
                 return Promise.reject();
             } else {
                 currentUser = await res.json();
+
                 document.getElementById('display-username').innerText = currentUser.realName || currentUser.username;
                 document.getElementById('welcome-username').innerText = currentUser.realName || currentUser.username;
 
-                // 【修复：系统管理员身份展示与课题组状态】
+                if (currentUser.avatar) {
+                    const sbAvatar = document.getElementById('sidebar-avatar');
+                    sbAvatar.src = currentUser.avatar;
+                    sbAvatar.classList.remove('hidden');
+                }
+
                 const badge = document.getElementById('group-status-badge');
                 if (currentUser.role === 'admin') {
                      badge.innerHTML = `<i class="fa-solid fa-user-shield mr-2 text-amber-400"></i>系统管理员`;
                      badge.className = "flex items-center px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300";
                      document.getElementById('display-role').innerText = '系统管理员';
                      document.getElementById('display-role').className = "text-xs font-bold text-amber-400 truncate mt-0.5";
+                     document.getElementById('admin-menu').classList.remove('hidden');
                 } else if (currentUser.groupId) {
                     badge.innerHTML = `<i class="fa-solid fa-users mr-2 text-indigo-400"></i>${currentUser.groupName} ${currentUser.isLeader ? '<span class="ml-2 text-amber-400 text-[10px] bg-amber-400/10 px-1 rounded border border-amber-400/30">组长</span>' : ''}`;
                     badge.className = "flex items-center px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-xs text-indigo-300";
@@ -421,7 +564,7 @@
 
     async function logout() { await fetch('/api/user/logout', { method: 'POST' }); window.location.href = '/login.html'; }
 
-    // ====== 导航与布局 ======
+    // ====== 导航 ======
     function toggleSidebar() {
         const sidebar = document.getElementById('sidebar');
         const icon = document.getElementById('collapse-icon');
@@ -434,7 +577,7 @@
     }
 
     function switchModule(moduleName) {
-        ['home', 'management', 'analysis', 'dashboard', 'groups', 'messages', 'logs'].forEach(m => {
+        ['home', 'management', 'analysis', 'dashboard', 'groups', 'messages', 'logs', 'admin'].forEach(m => {
             const mod = document.getElementById('module-' + m);
             if (mod) mod.classList.add('hidden');
             const nav = document.getElementById('nav-' + m);
@@ -445,22 +588,146 @@
         const activeNav = document.getElementById('nav-' + moduleName);
         if (activeNav) { activeNav.classList.remove('text-slate-400'); activeNav.classList.add('nav-active'); }
 
-        const titles = { 'home':'系统首页', 'management':'影像数据管理', 'analysis':'智能交互解析', 'dashboard':'数据驾驶舱', 'groups':'课题组管理', 'messages':'消息与审批', 'logs':'安全审计日志' };
-        const icons = { 'home':'fa-house', 'management':'fa-folder-open', 'analysis':'fa-microscope', 'dashboard':'fa-chart-pie', 'groups':'fa-users', 'messages':'fa-envelope', 'logs':'fa-clock-rotate-left' };
-        document.getElementById('page-title').innerHTML = `<i class="fa-solid ${icons[moduleName]} mr-3 text-cyan-500"></i>${titles[moduleName]}`;
+        const titles = { 'home':'系统首页', 'management':'影像数据管理', 'analysis':'智能交互解析', 'dashboard':'数据驾驶舱', 'groups':'课题组大厅', 'messages':'消息与审批', 'logs':'安全审计日志', 'admin':'系统运维台' };
+        const icons = { 'home':'fa-house', 'management':'fa-folder-open', 'analysis':'fa-microscope', 'dashboard':'fa-chart-pie', 'groups':'fa-users', 'messages':'fa-envelope', 'logs':'fa-clock-rotate-left', 'admin':'fa-screwdriver-wrench' };
+        document.getElementById('page-title').innerHTML = `<i class="fa-solid ${icons[moduleName]} mr-3 ${moduleName==='admin'?'text-amber-500':'text-cyan-500'}"></i>${titles[moduleName]}`;
 
         if (moduleName === 'dashboard') setTimeout(loadDashboardData, 100);
         if (moduleName === 'logs') loadLogs();
         if (moduleName === 'management') loadManagementList();
         if (moduleName === 'groups') loadGroups();
         if (moduleName === 'messages') switchMsgTab('todo');
+        if (moduleName === 'admin') loadAdminOptions();
     }
 
-    // ====== 影像管理 ======
+    // ====== 个人信息维护 ======
+    function openProfileModal() {
+        document.getElementById('profileModal').classList.remove('hidden');
+        document.getElementById('prof-realname').innerText = currentUser.realName || currentUser.username;
+        document.getElementById('prof-username').innerText = '@' + currentUser.username;
+
+        let gInfo = '未加入课题组';
+        if(currentUser.role === 'admin') gInfo = '最高权限管理员';
+        else if (currentUser.groupId) gInfo = `${currentUser.groupName} - ${currentUser.isLeader ? '组长' : '成员'}`;
+        document.getElementById('prof-group').innerText = gInfo;
+
+        if(currentUser.avatar) {
+            const pImg = document.getElementById('profile-avatar-img');
+            pImg.src = currentUser.avatar;
+            pImg.classList.remove('hidden');
+        }
+    }
+    function closeProfileModal() { document.getElementById('profileModal').classList.add('hidden'); }
+
+    async function editName() {
+        const newName = prompt("请输入新的显示姓名:", currentUser.realName || currentUser.username);
+        if(!newName || newName.trim() === '') return;
+        try {
+            const res = await fetch(`/api/user/profile/name?realName=${encodeURIComponent(newName)}`, { method: 'PUT' });
+            if(res.ok) { checkLogin(); openProfileModal(); }
+            else alert(await res.text());
+        } catch(e){}
+    }
+
+    function togglePwdSection() {
+        const sec = document.getElementById('pwd-change-section');
+        const btn = document.getElementById('pwd-toggle-btn');
+        if(sec.classList.contains('hidden')) {
+            sec.classList.remove('hidden'); btn.classList.add('hidden');
+        } else {
+            sec.classList.add('hidden'); btn.classList.remove('hidden');
+            document.getElementById('old-pwd').value = '';
+            document.getElementById('new-pwd').value = '';
+        }
+    }
+
+    async function submitPwdChange() {
+        const oldP = document.getElementById('old-pwd').value;
+        const newP = document.getElementById('new-pwd').value;
+        if(!oldP || !newP) { alert("密码不能为空"); return; }
+        if(newP.length < 6) { alert("新密码太短"); return; }
+        try {
+            const res = await fetch('/api/user/profile/password', {
+                method: 'PUT', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({oldPassword: oldP, newPassword: newP})
+            });
+            if(res.ok) { alert('密码修改成功，请重新登录'); logout(); }
+            else { alert(await res.text()); }
+        } catch(e){}
+    }
+
+    async function uploadAvatar(e) {
+        const file = e.target.files[0];
+        if(!file) return;
+        if(file.size > 2*1024*1024) { alert("图片不能超过2MB"); return; }
+        const fd = new FormData(); fd.append('file', file);
+        try {
+            const res = await fetch('/api/user/profile/avatar', { method: 'POST', body: fd });
+            if(res.ok) { checkLogin(); openProfileModal(); }
+            else alert("上传失败");
+        } catch(e){}
+    }
+
+    // ====== 系统运维管理 (Admin) ======
+    async function loadAdminOptions() {
+        try {
+            const [usersRes, groupsRes] = await Promise.all([fetch('/api/admin/users'), fetch('/api/group/list')]);
+            const users = await usersRes.json();
+            const groups = await groupsRes.json();
+
+            let uOpts = '<option value="">暂不指定</option>' + users.map(u => `<option value="${u.id}">${u.realName} (@${u.username})</option>`).join('');
+            document.getElementById('admin-group-leader').innerHTML = uOpts;
+
+            let gOpts = '<option value="">暂不分配</option>' + groups.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
+            document.getElementById('admin-user-group').innerHTML = gOpts;
+        } catch(e){}
+    }
+
+    async function adminAddGroup() {
+        const name = document.getElementById('admin-group-name').value;
+        const dir = document.getElementById('admin-group-direction').value;
+        const desc = document.getElementById('admin-group-desc').value;
+        const lid = document.getElementById('admin-group-leader').value;
+
+        if(!name || !dir) { alert("名称和方向必填"); return; }
+
+        const body = { name: name, direction: dir, description: desc };
+        if(lid) body.leaderId = parseInt(lid);
+
+        try {
+            const res = await fetch('/api/admin/group/add', {
+                method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+            });
+            if(res.ok) { alert('添加课题组成功！'); document.getElementById('admin-group-name').value=''; loadAdminOptions(); }
+            else alert(await res.text());
+        } catch(e){}
+    }
+
+    async function adminAddUser() {
+        const un = document.getElementById('admin-user-username').value;
+        const rn = document.getElementById('admin-user-realname').value;
+        const pwd = document.getElementById('admin-user-pwd').value;
+        const gid = document.getElementById('admin-user-group').value;
+        const isL = document.getElementById('admin-user-isleader').checked;
+
+        if(!un || !rn || !pwd) { alert("账号、姓名、密码必填"); return; }
+
+        const body = { username: un, realName: rn, password: pwd };
+        if(gid) { body.groupId = parseInt(gid); body.isLeader = isL ? 1 : 0; }
+
+        try {
+            const res = await fetch('/api/admin/user/add', {
+                method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+            });
+            if(res.ok) { alert('添加人员成功！'); document.getElementById('admin-user-username').value=''; loadAdminOptions(); }
+            else alert(await res.text());
+        } catch(e){}
+    }
+
+    // ====== 影像管理 (Requirement III 修复) ======
     function triggerUpload() {
         if (!currentUser.groupId && currentUser.role !== 'admin') {
-            alert("请先加入课题组方可上传数据！");
-            return;
+            alert("请先加入课题组方可上传数据！"); return;
         }
         document.getElementById('fileInput').click();
     }
@@ -471,26 +738,17 @@
         document.getElementById('uploadModal').classList.remove('hidden');
     });
 
-    function closeUploadModal() {
-        document.getElementById('uploadModal').classList.add('hidden');
-        document.getElementById('fileInput').value = '';
-        pendingFile = null;
-    }
+    function closeUploadModal() { document.getElementById('uploadModal').classList.add('hidden'); document.getElementById('fileInput').value = ''; pendingFile = null; }
 
     async function confirmUpload() {
         if(!pendingFile) return;
         const vis = document.querySelector('input[name="uploadVis"]:checked').value;
-        const fd = new FormData();
-        fd.append('file', pendingFile);
-        fd.append('visibility', vis);
-
+        const fd = new FormData(); fd.append('file', pendingFile); fd.append('visibility', vis);
         closeUploadModal();
-
         try {
             const res = await fetch('/api/image/upload', { method: 'POST', body: fd });
-            if(res.ok) { alert('上传并排队解析中！'); loadManagementList(); }
-            else { alert('上传失败: ' + await res.text()); }
-        } catch(e) { alert('网络错误'); }
+            if(res.ok) { alert('上传并排队解析中！'); loadManagementList(); } else alert(await res.text());
+        } catch(e) {}
     }
 
     async function loadManagementList() {
@@ -498,24 +756,15 @@
             const res = await fetch(`/api/image/list`);
             const data = await res.json();
             const html = data.map(img => {
-                const statusBadge = img.status === 1
-                    ? `<span class="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-xs border border-emerald-500/20">已解析</span>`
-                    : `<span class="bg-slate-700/50 text-slate-400 px-2 py-0.5 rounded text-xs border border-slate-600/50">未解析</span>`;
-
-                // 权限列渲染
-                let permBtn = '';
-                if (img.visibility === 2) {
-                    permBtn = `<span class="text-emerald-400 text-xs"><i class="fa-solid fa-globe mr-1"></i>公开共享</span>`;
-                } else {
-                    permBtn = `<span class="text-indigo-400 text-xs"><i class="fa-solid fa-lock mr-1"></i>本组私有</span>`;
-                }
-
-                // 如果是本组组长或admin，允许点击修改
+                const statusBadge = img.status === 1 ? `<span class="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-xs border border-emerald-500/20">已解析</span>` : `<span class="bg-slate-700/50 text-slate-400 px-2 py-0.5 rounded text-xs border border-slate-600/50">未解析</span>`;
+                let permBtn = img.visibility === 2 ? `<span class="text-emerald-400 text-xs"><i class="fa-solid fa-globe mr-1"></i>公开共享</span>` : `<span class="text-indigo-400 text-xs"><i class="fa-solid fa-lock mr-1"></i>本组私有</span>`;
                 if ((currentUser.isLeader === 1 && currentUser.groupId === img.groupId) || currentUser.role === 'admin') {
-                    const nextVis = img.visibility === 1 ? 2 : 1;
-                    const actionTxt = img.visibility === 1 ? '设为共享' : '设为私有';
+                    const nextVis = img.visibility === 1 ? 2 : 1; const actionTxt = img.visibility === 1 ? '设为共享' : '设为私有';
                     permBtn += ` <button onclick="toggleVisibility(${img.id}, ${nextVis})" class="ml-2 text-slate-500 hover:text-blue-400 text-xs underline">[${actionTxt}]</button>`;
                 }
+
+                // 【Requirement III 修复】数据类型字段分离
+                const dataTypeStr = `<div class="font-mono"><span class="text-blue-300 font-bold">${img.modality || 'UNK'}</span> <span class="text-slate-500 text-[10px]">/ ${img.format || 'RAW'}</span></div>`;
 
                 return `
                 <tr class="hover:bg-slate-800/50 transition border-b border-slate-800/50 last:border-0">
@@ -523,276 +772,125 @@
                         <div class="flex items-center"><i class="fa-solid fa-file-medical text-blue-400 mr-2"></i>${img.fileName}</div>
                         <div class="text-[10px] text-slate-500 mt-1">上传人: ${img.ownerName || 'Unknown'}</div>
                     </td>
+                    <td class="px-6 py-4 text-slate-300 text-sm">${dataTypeStr}</td>
                     <td class="px-6 py-4 text-slate-300 text-sm"><i class="fa-solid fa-users text-indigo-400/50 mr-1"></i>${img.groupName || '系统公开'}</td>
+                    <td class="px-6 py-4 text-slate-500 font-mono text-xs">${img.dimX} x ${img.dimY} x ${img.dimZ}</td>
                     <td class="px-6 py-4">${statusBadge}</td>
                     <td class="px-6 py-4">${permBtn}</td>
                     <td class="px-6 py-4 text-slate-500 text-xs">${img.createTime || '-'}</td>
                     <td class="px-6 py-4 text-right space-x-3">
                         <button onclick="gotoAnalysis('${img.fileName.replace(/'/g, "\\'")}', ${img.dimZ})" class="text-cyan-400 hover:text-cyan-300 text-sm"><i class="fa-solid fa-eye"></i></button>
-                        ${(currentUser.role === 'admin' || (currentUser.isLeader === 1 && currentUser.groupId === img.groupId)) ?
-                          `<button onclick="deleteImage(${img.id})" class="text-red-400 hover:text-red-300 text-sm"><i class="fa-solid fa-trash-can"></i></button>` : ''}
+                        ${(currentUser.role === 'admin' || (currentUser.isLeader === 1 && currentUser.groupId === img.groupId)) ? `<button onclick="deleteImage(${img.id})" class="text-red-400 hover:text-red-300 text-sm"><i class="fa-solid fa-trash-can"></i></button>` : ''}
                     </td>
                 </tr>`
             }).join('');
             document.getElementById('managementTableBody').innerHTML = html;
-        } catch (err) { console.error(err); }
+        } catch (err) {}
     }
 
-    async function toggleVisibility(id, newVis) {
-        if(!confirm(`确定要修改该影像的可见性吗？`)) return;
-        try {
-            const res = await fetch(`/api/image/visibility/${id}?visibility=${newVis}`, { method: 'PUT' });
-            if(res.ok) loadManagementList(); else alert(await res.text());
-        } catch(e) {}
-    }
+    async function toggleVisibility(id, newVis) { if(!confirm(`确定修改可见性吗？`)) return; try { const res = await fetch(`/api/image/visibility/${id}?visibility=${newVis}`, { method: 'PUT' }); if(res.ok) loadManagementList(); } catch(e) {} }
+    async function deleteImage(id) { if (!confirm("确定删除？")) return; try { const res = await fetch(`/api/image/delete/${id}`, { method: 'DELETE' }); if (res.ok) loadManagementList(); } catch (e) {} }
 
-    async function deleteImage(id) {
-        if (!confirm("确定删除？")) return;
-        try { const res = await fetch(`/api/image/delete/${id}`, { method: 'DELETE' }); if (res.ok) loadManagementList(); else alert(await res.text()); } catch (e) {}
-    }
-
-    // ====== 影像解析 ======
     function gotoAnalysis(name, maxZ) {
         switchModule('analysis');
-        document.getElementById('currentFileName').innerText = name;
-        document.getElementById('currentFileName').classList.remove('hidden');
-        document.getElementById('analysis-placeholder').classList.add('hidden');
-        document.getElementById('analysis-content').classList.remove('hidden');
-        document.getElementById('analysis-content').classList.add('flex');
+        document.getElementById('currentFileName').innerText = name; document.getElementById('currentFileName').classList.remove('hidden');
+        document.getElementById('analysis-placeholder').classList.add('hidden'); document.getElementById('analysis-content').classList.remove('hidden'); document.getElementById('analysis-content').classList.add('flex');
         document.getElementById('analysis-warning').classList.add('hidden');
-
-        if (!maxZ || maxZ <= 1) {
-            document.getElementById('analysis-warning').classList.remove('hidden');
-            document.getElementById('warning-text').innerText = `元数据尚未就绪或解析失败，请检查文件格式。`;
-            const slider = document.getElementById('sliceSlider');
-            slider.max = 0; slider.value = 0; slider.disabled = true;
-            document.getElementById('medViewer').src = "";
-            return;
-        }
-
-        const slider = document.getElementById('sliceSlider');
-        slider.disabled = false;
-        slider.max = maxZ > 0 ? maxZ - 1 : 0;
-        slider.value = Math.floor(slider.max / 2);
-        slider.oninput = (e) => loadSlice(name, e.target.value);
-        loadSlice(name, slider.value);
+        if (!maxZ || maxZ <= 1) { document.getElementById('analysis-warning').classList.remove('hidden'); document.getElementById('warning-text').innerText = `元数据异常`; const slider = document.getElementById('sliceSlider'); slider.max = 0; slider.value = 0; slider.disabled = true; document.getElementById('medViewer').src = ""; return; }
+        const slider = document.getElementById('sliceSlider'); slider.disabled = false; slider.max = maxZ > 0 ? maxZ - 1 : 0; slider.value = Math.floor(slider.max / 2);
+        slider.oninput = (e) => loadSlice(name, e.target.value); loadSlice(name, slider.value);
     }
+    async function loadSlice(name, index) { document.getElementById('sliceCounter').innerText = `${index}/${document.getElementById('sliceSlider').max}`; try { const res = await fetch(`/api/image/view?file=${name}&index=${index}`); if(res.ok) { const data = await res.json(); if(data && data.image) document.getElementById('medViewer').src = "data:image/png;base64," + data.image; } } catch(e) {} }
 
-    async function loadSlice(name, index) {
-        document.getElementById('sliceCounter').innerText = `${index}/${document.getElementById('sliceSlider').max}`;
-        try {
-            const res = await fetch(`/api/image/view?file=${name}&index=${index}`);
-            if(res.ok) {
-                const data = await res.json();
-                if(data && data.image) document.getElementById('medViewer').src = "data:image/png;base64," + data.image;
-            }
-        } catch(e) {}
-    }
-
-    // ====== 课题组大厅 ( Requirement I ) ======
+    // ====== 课题组大厅 (Requirement II 重构卡片布局) ======
     async function loadGroups() {
         try {
             const res = await fetch('/api/group/list');
             const data = await res.json();
             const html = data.map(g => {
-                let actionBtn = '';
-                if (currentUser.role === 'admin') {
-                    actionBtn = `<span class="text-amber-400 text-xs">系统管理员</span>`;
-                } else if (currentUser.groupId === g.id) {
-                    actionBtn = currentUser.isLeader === 1
-                        ? `<span class="text-amber-400 text-xs border border-amber-400/30 px-2 py-1 rounded">我是组长</span>`
-                        : `<button onclick="applyQuit(${g.id})" class="text-red-400 hover:underline text-xs">申请退出</button>`;
-                } else if (!currentUser.groupId) {
-                    actionBtn = `<button onclick="applyJoin(${g.id})" class="text-emerald-400 hover:underline text-xs">申请加入</button>`;
-                } else {
-                    actionBtn = `<span class="text-slate-600 text-xs">无法操作</span>`;
-                }
-
                 return `
-                <tr class="hover:bg-slate-800/50 transition border-b border-slate-800/50 cursor-pointer" onclick="viewGroup(${g.id})">
-                    <td class="px-6 py-4 font-medium text-slate-200">${g.name}</td>
-                    <td class="px-6 py-4 text-slate-400 text-sm"><i class="fa-solid fa-crown text-amber-400/50 mr-1"></i>${g.leaderName || 'N/A'}</td>
-                    <td class="px-6 py-4 text-slate-400 text-xs truncate max-w-[150px]">${g.direction || '-'}</td>
-                    <td class="px-6 py-4 text-right space-x-2" onclick="event.stopPropagation()">
-                        <button onclick="viewGroup(${g.id})" class="text-cyan-400 hover:underline text-xs mr-2">查看</button>
-                        ${actionBtn}
-                    </td>
-                </tr>`;
+                <div class="glass-panel p-6 rounded-2xl border border-slate-700/50 hover:border-indigo-500/50 transition duration-300 cursor-pointer group flex flex-col h-full" onclick="openGroupModal(${g.id})">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 text-xl group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-atom"></i>
+                        </div>
+                        <div class="bg-slate-800/80 px-2 py-1 rounded text-[10px] text-slate-400 flex items-center">
+                            <i class="fa-solid fa-crown text-amber-400/80 mr-1.5"></i>${g.leaderName || '暂无组长'}
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-bold text-slate-100 group-hover:text-indigo-300 transition-colors">${g.name}</h3>
+                    <p class="text-xs text-indigo-400 mb-3 mt-1 line-clamp-1">${g.direction || '基础医学研究'}</p>
+                    <p class="text-sm text-slate-400 line-clamp-2 flex-1 mb-4">${g.description || '该课题组暂未填写详细简介...'}</p>
+                    <div class="pt-3 border-t border-slate-700/50 text-right">
+                        <span class="text-xs text-slate-500 group-hover:text-white transition-colors">点击查看详情 <i class="fa-solid fa-arrow-right ml-1"></i></span>
+                    </div>
+                </div>`;
             }).join('');
-            document.getElementById('groupTableBody').innerHTML = html;
+            document.getElementById('groupsGrid').innerHTML = html;
         } catch(e){}
     }
 
-    async function viewGroup(id) {
+    async function openGroupModal(id) {
         try {
             const res = await fetch(`/api/group/detail/${id}`);
             const data = await res.json();
 
-            document.getElementById('group-detail-empty').classList.add('hidden');
-            document.getElementById('group-detail-content').classList.remove('hidden');
+            document.getElementById('modal-gd-name').innerText = data.name;
+            document.getElementById('modal-gd-direction').innerText = data.direction || '无特定方向';
+            document.getElementById('modal-gd-desc').innerText = data.description || '暂无简介...';
 
-            document.getElementById('gd-name').innerText = data.name;
-            document.getElementById('gd-direction').innerText = data.direction || '无特定方向';
-            document.getElementById('gd-desc').innerText = data.description || '暂无简介';
-
-            // 成员展示
-            let membersHtml = '';
+            let mHtml = '<div class="col-span-2 text-slate-500 text-sm text-center py-4">暂无成员</div>';
             if (data.members && data.members.length > 0) {
-                membersHtml = data.members.map(m => `
-                    <div class="flex items-center justify-between bg-slate-800/30 p-2 rounded-lg border border-slate-700/50">
-                        <span class="text-slate-300 text-sm"><i class="fa-solid fa-user text-slate-500 mr-2"></i>${m.realName || m.username}</span>
-                        ${m.isLeader === 1 ? '<span class="text-amber-400 text-[10px] border border-amber-400/30 px-1.5 rounded">组长</span>' : '<span class="text-slate-500 text-[10px]">成员</span>'}
-                    </div>
-                `).join('');
-            } else {
-                membersHtml = '<div class="text-slate-500 text-sm">暂无成员</div>';
+                mHtml = data.members.map(m => `
+                    <div class="flex items-center justify-between bg-slate-800/50 p-3 rounded-xl border border-slate-700/50">
+                        <div class="flex items-center">
+                            <div class="w-8 h-8 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center mr-3 border border-slate-600">
+                                ${m.avatar ? `<img src="${m.avatar}" class="w-full h-full object-cover">` : `<i class="fa-solid fa-user text-slate-400 text-xs"></i>`}
+                            </div>
+                            <div>
+                                <div class="text-slate-200 text-sm font-medium">${m.realName || m.username}</div>
+                                <div class="text-[10px] text-slate-500">@${m.username}</div>
+                            </div>
+                        </div>
+                        ${m.isLeader === 1 ? '<span class="text-amber-400 text-xs font-bold"><i class="fa-solid fa-crown mr-1"></i>组长</span>' : '<span class="text-slate-500 text-xs">成员</span>'}
+                    </div>`).join('');
             }
-            document.getElementById('gd-members').innerHTML = membersHtml;
+            document.getElementById('modal-gd-members').innerHTML = mHtml;
 
+            // 渲染操作按钮
+            let actionBtn = '';
+            if (currentUser.role === 'admin') {
+                actionBtn = `<span class="bg-slate-800 text-amber-400 text-xs px-3 py-1.5 rounded-lg border border-amber-400/30">您是管理员</span>`;
+            } else if (currentUser.groupId === data.id) {
+                actionBtn = currentUser.isLeader === 1
+                    ? `<span class="bg-slate-800 text-amber-400 text-xs px-3 py-1.5 rounded-lg border border-amber-400/30"><i class="fa-solid fa-crown mr-1"></i>我是组长</span>`
+                    : `<button onclick="applyQuit(${data.id})" class="bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 text-xs px-4 py-1.5 rounded-lg border border-red-500/30 transition">申请退出课题组</button>`;
+            } else if (!currentUser.groupId) {
+                actionBtn = `<button onclick="applyJoin(${data.id})" class="bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-bold text-xs px-5 py-1.5 rounded-lg shadow-lg transition">申请加入课题组</button>`;
+            } else {
+                actionBtn = `<span class="bg-slate-800 text-slate-500 text-xs px-3 py-1.5 rounded-lg">您已加入其他组</span>`;
+            }
+            document.getElementById('modal-gd-action').innerHTML = actionBtn;
+
+            document.getElementById('groupModal').classList.remove('hidden');
         } catch(e) { alert("获取详情失败"); }
     }
 
-    async function applyJoin(groupId) {
-        if(!confirm("确定申请加入该课题组？")) return;
-        const reason = prompt("请输入申请理由 (可选):", "希望加入团队共同研究");
-        try {
-            const res = await fetch(`/api/group/apply/join?groupId=${groupId}&reason=${encodeURIComponent(reason||'')}`, { method: 'POST' });
-            alert(await res.text());
-        } catch(e){}
+    function closeGroupModal() {
+        document.getElementById('groupModal').classList.add('hidden');
     }
 
-    async function applyQuit(groupId) {
-        if(!confirm("确定申请退出该课题组？")) return;
-        const reason = prompt("请输入退出理由 (可选):", "个人原因退出");
-        try {
-            const res = await fetch(`/api/group/apply/quit?groupId=${groupId}&reason=${encodeURIComponent(reason||'')}`, { method: 'POST' });
-            alert(await res.text());
-        } catch(e){}
-    }
+    async function applyJoin(gId) { if(!confirm("申请加入？")) return; const r = prompt("理由:", "希望加入"); try { const res = await fetch(`/api/group/apply/join?groupId=${gId}&reason=${encodeURIComponent(r||'')}`, { method: 'POST' }); if(res.ok){ alert("已提交"); closeGroupModal(); } else alert(await res.text()); } catch(e){} }
+    async function applyQuit(gId) { if(!confirm("申请退出？")) return; const r = prompt("理由:", "退出"); try { const res = await fetch(`/api/group/apply/quit?groupId=${gId}&reason=${encodeURIComponent(r||'')}`, { method: 'POST' }); if(res.ok){ alert("已提交"); closeGroupModal(); } else alert(await res.text()); } catch(e){} }
 
-    // ====== 消息与审批 ======
-    async function checkUnreadMessages() {
-        try {
-            const res = await fetch('/api/message/todo');
-            const data = await res.json();
-            const unread = data.filter(m => m.status === 'UNREAD').length;
-            if (unread > 0) {
-                document.getElementById('msg-badge').classList.remove('hidden');
-            } else {
-                document.getElementById('msg-badge').classList.add('hidden');
-            }
-        } catch(e){}
-    }
+    async function checkUnreadMessages() { try { const res = await fetch('/api/message/todo'); const data = await res.json(); if (data.filter(m => m.status === 'UNREAD').length > 0) document.getElementById('msg-badge').classList.remove('hidden'); else document.getElementById('msg-badge').classList.add('hidden'); } catch(e){} }
+    function switchMsgTab(tab) { const bTodo = document.getElementById('tab-todo'); const bSent = document.getElementById('tab-sent'); const aCls = "bg-pink-500/20 text-pink-400 border border-pink-500/30"; const iCls = "text-slate-400 hover:text-slate-200 border border-transparent"; if (tab === 'todo') { if(currentUser.isLeader !== 1 && currentUser.role !== 'admin') { alert("无权限"); return; } bTodo.className = `px-6 py-2 rounded-lg text-sm font-medium transition-colors ${aCls}`; bSent.className = `px-6 py-2 rounded-lg text-sm font-medium transition-colors ${iCls}`; document.getElementById('msg-table-head').innerHTML = `<th class="px-6 py-4">时间</th><th class="px-6 py-4">申请人</th><th class="px-6 py-4">类型</th><th class="px-6 py-4">理由</th><th class="px-6 py-4">状态</th><th class="px-6 py-4 text-right">操作</th>`; loadMessages('/api/message/todo', true); } else { bSent.className = `px-6 py-2 rounded-lg text-sm font-medium transition-colors ${aCls}`; bTodo.className = `px-6 py-2 rounded-lg text-sm font-medium transition-colors ${iCls}`; document.getElementById('msg-table-head').innerHTML = `<th class="px-6 py-4">时间</th><th class="px-6 py-4">目标课题组</th><th class="px-6 py-4">类型</th><th class="px-6 py-4">理由</th><th class="px-6 py-4">状态</th>`; loadMessages('/api/message/sent', false); } }
+    async function loadMessages(url, isTodo) { try { const res = await fetch(url); const data = await res.json(); const html = data.map(msg => { let typeTxt = msg.type === 'JOIN_APPLY' ? '<span class="text-emerald-400">申请加入</span>' : '<span class="text-red-400">申请退出</span>'; let statusBadge = msg.status === 'UNREAD' ? '<span class="text-amber-400 text-xs border border-amber-400/30 px-2 py-0.5 rounded">待审批</span>' : (msg.status === 'APPROVED' ? '<span class="text-emerald-400 text-xs">已同意</span>' : '<span class="text-slate-500 text-xs">已驳回</span>'); if (isTodo) { let actionBtn = msg.status === 'UNREAD' ? `<button onclick="handleApprove(${msg.id}, '${msg.type}', true)" class="text-emerald-400 hover:underline mr-2">同意</button><button onclick="handleApprove(${msg.id}, '${msg.type}', false)" class="text-red-400 hover:underline">拒绝</button>` : '<span class="text-slate-600">已处理</span>'; return `<tr class="border-b border-slate-800/50"><td class="px-6 py-4 text-slate-500 text-xs">${msg.createTime}</td><td class="px-6 py-4 text-slate-200">${msg.senderName}</td><td class="px-6 py-4">${typeTxt}</td><td class="px-6 py-4 text-slate-400 text-xs">${msg.content}</td><td class="px-6 py-4">${statusBadge}</td><td class="px-6 py-4 text-right text-xs">${actionBtn}</td></tr>`; } else { return `<tr class="border-b border-slate-800/50"><td class="px-6 py-4 text-slate-500 text-xs">${msg.createTime}</td><td class="px-6 py-4 text-slate-200">${msg.groupName}</td><td class="px-6 py-4">${typeTxt}</td><td class="px-6 py-4 text-slate-400 text-xs">${msg.content}</td><td class="px-6 py-4">${statusBadge}</td></tr>`; } }).join(''); document.getElementById('msgTableBody').innerHTML = html; } catch(e){} }
+    async function handleApprove(id, type, isAgree) { if(!confirm(`确定${isAgree?'同意':'拒绝'}？`)) return; try { await fetch(`${type === 'JOIN_APPLY' ? '/api/message/approve/join' : '/api/message/approve/quit'}?messageId=${id}&isAgree=${isAgree}`, { method: 'POST' }); alert("处理成功"); switchMsgTab('todo'); checkUnreadMessages(); } catch(e){} }
 
-    function switchMsgTab(tab) {
-        const btnTodo = document.getElementById('tab-todo');
-        const btnSent = document.getElementById('tab-sent');
-        const activeClass = "bg-pink-500/20 text-pink-400 border border-pink-500/30";
-        const inactiveClass = "text-slate-400 hover:text-slate-200 border border-transparent";
-
-        if (tab === 'todo') {
-            if(currentUser.isLeader !== 1 && currentUser.role !== 'admin') {
-                alert("您不是组长，无审批权限");
-                return;
-            }
-            btnTodo.className = `px-6 py-2 rounded-lg text-sm font-medium transition-colors ${activeClass}`;
-            btnSent.className = `px-6 py-2 rounded-lg text-sm font-medium transition-colors ${inactiveClass}`;
-            document.getElementById('msg-table-head').innerHTML = `
-                <th class="px-6 py-4">时间</th><th class="px-6 py-4">申请人</th><th class="px-6 py-4">类型</th><th class="px-6 py-4">理由</th><th class="px-6 py-4">状态</th><th class="px-6 py-4 text-right">操作</th>`;
-            loadMessages('/api/message/todo', true);
-        } else {
-            btnSent.className = `px-6 py-2 rounded-lg text-sm font-medium transition-colors ${activeClass}`;
-            btnTodo.className = `px-6 py-2 rounded-lg text-sm font-medium transition-colors ${inactiveClass}`;
-            document.getElementById('msg-table-head').innerHTML = `
-                <th class="px-6 py-4">时间</th><th class="px-6 py-4">目标课题组</th><th class="px-6 py-4">类型</th><th class="px-6 py-4">理由</th><th class="px-6 py-4">状态</th>`;
-            loadMessages('/api/message/sent', false);
-        }
-    }
-
-    async function loadMessages(url, isTodo) {
-        try {
-            const res = await fetch(url);
-            const data = await res.json();
-            const html = data.map(msg => {
-                let typeTxt = msg.type === 'JOIN_APPLY' ? '<span class="text-emerald-400">申请加入</span>' : '<span class="text-red-400">申请退出</span>';
-                let statusBadge = '';
-                if(msg.status === 'UNREAD') statusBadge = '<span class="text-amber-400 text-xs border border-amber-400/30 px-2 py-0.5 rounded">待审批</span>';
-                else if(msg.status === 'APPROVED') statusBadge = '<span class="text-emerald-400 text-xs">已同意</span>';
-                else statusBadge = '<span class="text-slate-500 text-xs">已驳回</span>';
-
-                if (isTodo) {
-                    let actionBtn = msg.status === 'UNREAD' ? `
-                        <button onclick="handleApprove(${msg.id}, '${msg.type}', true)" class="text-emerald-400 hover:underline mr-2">同意</button>
-                        <button onclick="handleApprove(${msg.id}, '${msg.type}', false)" class="text-red-400 hover:underline">拒绝</button>
-                    ` : '<span class="text-slate-600">已处理</span>';
-
-                    return `<tr class="border-b border-slate-800/50">
-                        <td class="px-6 py-4 text-slate-500 text-xs">${msg.createTime}</td>
-                        <td class="px-6 py-4 text-slate-200">${msg.senderName}</td>
-                        <td class="px-6 py-4">${typeTxt}</td>
-                        <td class="px-6 py-4 text-slate-400 text-xs">${msg.content}</td>
-                        <td class="px-6 py-4">${statusBadge}</td>
-                        <td class="px-6 py-4 text-right text-xs">${actionBtn}</td>
-                    </tr>`;
-                } else {
-                    return `<tr class="border-b border-slate-800/50">
-                        <td class="px-6 py-4 text-slate-500 text-xs">${msg.createTime}</td>
-                        <td class="px-6 py-4 text-slate-200">${msg.groupName}</td>
-                        <td class="px-6 py-4">${typeTxt}</td>
-                        <td class="px-6 py-4 text-slate-400 text-xs">${msg.content}</td>
-                        <td class="px-6 py-4">${statusBadge}</td>
-                    </tr>`;
-                }
-            }).join('');
-            document.getElementById('msgTableBody').innerHTML = html;
-        } catch(e){}
-    }
-
-    async function handleApprove(id, type, isAgree) {
-        if(!confirm(`确定${isAgree?'同意':'拒绝'}该申请吗？`)) return;
-        const endpoint = type === 'JOIN_APPLY' ? '/api/message/approve/join' : '/api/message/approve/quit';
-        try {
-            const res = await fetch(`${endpoint}?messageId=${id}&isAgree=${isAgree}`, { method: 'POST' });
-            if(res.ok) {
-                alert("处理成功");
-                switchMsgTab('todo');
-                checkUnreadMessages();
-            } else { alert(await res.text()); }
-        } catch(e){}
-    }
-
-    // ====== 数据看板与日志 ======
-    async function loadDashboardData() {
-        try {
-            const res = await fetch('/api/image/stats');
-            const data = await res.json();
-            document.getElementById('stat-total').innerText = data.totalImages || 0;
-            initPieChart('chart-modality', '模态分布', data.modalityDistribution, ['#3b82f6', '#8b5cf6', '#ec4899']);
-            initPieChart('chart-format', '格式分布', data.formatDistribution, ['#10b981', '#f59e0b', '#6366f1']);
-            const statusData = (data.statusDistribution || []).map(item => ({ name: item.status === 1 ? '已解析' : '未解析', value: item.count }));
-            initPieChart('chart-status', '解析状态', statusData, ['#22c55e', '#ef4444']);
-        } catch (e) {}
-    }
-
-    function initPieChart(domId, name, data, colors) {
-        const dom = document.getElementById(domId);
-        if (!dom || dom.clientWidth === 0) return;
-        if (!data || data.length === 0) { dom.innerHTML = '<div class="h-full flex items-center justify-center text-slate-600">暂无数据</div>'; return; }
-        if (echarts.getInstanceByDom(dom)) echarts.getInstanceByDom(dom).dispose();
-        const chart = echarts.init(dom);
-        const formattedData = data.map(item => { if (item.name && item.value) return item; const val = item.count; let label = item.modality || item.format || item.status; return { name: label || 'Unknown', value: val }; });
-        const option = { tooltip: { trigger: 'item', backgroundColor: 'rgba(30,41,59,0.9)', borderColor: '#475569', textStyle: { color: '#fff' } }, legend: { bottom: '0%', textStyle: { color: '#94a3b8' }, itemWidth: 10, itemHeight: 10 }, color: colors, series: [{ name: name, type: 'pie', radius: ['40%', '70%'], center: ['50%', '45%'], itemStyle: { borderRadius: 5, borderColor: '#1e293b', borderWidth: 2 }, label: { show: false }, data: formattedData }] };
-        chart.setOption(option);
-        window.addEventListener('resize', () => chart.resize());
-    }
-
-    async function loadLogs() {
-        try {
-            const res = await fetch('/api/logs');
-            const data = await res.json();
-            const html = data.map(log => ` <tr class="hover:bg-slate-800/50 transition border-b border-slate-800/50 last:border-0"> <td class="px-6 py-4 text-slate-500 font-mono text-xs">${log.createTime || '-'}</td> <td class="px-6 py-4 font-medium text-slate-200">${log.username || 'N/A'}</td> <td class="px-6 py-4 text-cyan-400 text-xs">${log.operation || '-'}</td> <td class="px-6 py-4 text-slate-400 text-xs">${log.method || '-'}</td> <td class="px-6 py-4 text-slate-500 text-xs">${log.ip || '-'}</td> </tr> `).join(''); document.getElementById('logsTableBody').innerHTML = html;
-        } catch (e) {}
-    }
+    async function loadDashboardData() { try { const res = await fetch('/api/image/stats'); const data = await res.json(); document.getElementById('stat-total').innerText = data.totalImages || 0; initPieChart('chart-modality', '模态分布', data.modalityDistribution, ['#3b82f6', '#8b5cf6', '#ec4899']); initPieChart('chart-format', '格式分布', data.formatDistribution, ['#10b981', '#f59e0b', '#6366f1']); initPieChart('chart-status', '解析状态', (data.statusDistribution || []).map(i => ({ name: i.status === 1 ? '已解析' : '未解析', value: i.count })), ['#22c55e', '#ef4444']); } catch (e) {} }
+    function initPieChart(domId, name, data, colors) { const dom = document.getElementById(domId); if (!dom || dom.clientWidth === 0) return; if (!data || data.length === 0) { dom.innerHTML = '<div class="h-full flex items-center justify-center text-slate-600">暂无数据</div>'; return; } if (echarts.getInstanceByDom(dom)) echarts.getInstanceByDom(dom).dispose(); const chart = echarts.init(dom); chart.setOption({ tooltip: { trigger: 'item', backgroundColor: 'rgba(30,41,59,0.9)', borderColor: '#475569', textStyle: { color: '#fff' } }, legend: { bottom: '0%', textStyle: { color: '#94a3b8' }, itemWidth: 10, itemHeight: 10 }, color: colors, series: [{ name: name, type: 'pie', radius: ['40%', '70%'], center: ['50%', '45%'], itemStyle: { borderRadius: 5, borderColor: '#1e293b', borderWidth: 2 }, label: { show: false }, data: data.map(item => ({ name: item.name || item.modality || item.format || item.status || 'Unknown', value: item.value || item.count })) }] }); window.addEventListener('resize', () => chart.resize()); }
+    async function loadLogs() { try { const res = await fetch('/api/logs'); const data = await res.json(); document.getElementById('logsTableBody').innerHTML = data.map(log => ` <tr class="hover:bg-slate-800/50 transition border-b border-slate-800/50 last:border-0"> <td class="px-6 py-4 text-slate-500 font-mono text-xs">${log.createTime || '-'}</td> <td class="px-6 py-4 font-medium text-slate-200">${log.username || 'N/A'}</td> <td class="px-6 py-4 text-cyan-400 text-xs">${log.operation || '-'}</td> <td class="px-6 py-4 text-slate-400 text-xs">${log.method || '-'}</td> <td class="px-6 py-4 text-slate-500 text-xs">${log.ip || '-'}</td> </tr> `).join(''); } catch (e) {} }
 </script>
 </body>
 </html>
