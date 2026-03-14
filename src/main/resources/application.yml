@@ -20,5 +20,9 @@ mybatis:
   configuration:
     map-underscore-to-camel-case: true
 
+# 【修复】添加缺失的自定义配置
+file:
+  upload-dir: ./med_data/ # 默认存放在项目运行目录下的 med-data 文件夹
+
 server:
   port: 8080

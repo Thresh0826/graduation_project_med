@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>登录 - 医学影像科研平台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 flex items-center justify-center h-screen">
+    <div class="w-full max-w-md bg-gray-800 rounded-xl shadow-2xl p-8 border border-gray-700">
+        <h1 class="text-2xl font-bold text-center text-blue-400 mb-2">医学影像科研平台</h1>
+        <p class="text-center text-gray-400 mb-8">请使用您的账户登录</p>
+
+        <div id="error-message" class="hidden bg-red-900 border border-red-700 text-red-300 px-4 py-3 rounded-lg relative mb-6">
+            <span></span>
+        </div>
+
+        <form onsubmit="login(event)">
+            <div class="mb-4">
+                <label for="username" class="block text-gray-300 text-sm font-bold mb-2">用户名</label>
+                <input type="text" id="username" name="username" required
+                       class="w-full bg-gray-700 border border-gray-600 rounded-lg py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+            </div>
+            <div class="mb-6">
+                <label for="password" class="block text-gray-300 text-sm font-bold mb-2">密码</label>
+                <input type="password" id="password" name="password" required
+                       class="w-full bg-gray-700 border border-gray-600 rounded-lg py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+            </div>
+            <button type="submit" id="login-button"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition duration-300">
+                登 录
+            </button>
+        </form>
+    </div>
+
+<script>
+    async function login(event) {
+        event.preventDefault();
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        const button = document.getElementById('login-button');
+        const errorMessage = document.getElementById('error-message');
+
+        button.disabled = true;
+        button.innerText = '登录中...';
+        errorMessage.classList.add('hidden');
+
+        try {
+            const response = await fetch('/api/user/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+
+            if (response.ok) {
+                window.location.href = '/index.html';
+            } else {
+                const errorText = await response.text();
+                errorMessage.querySelector('span').innerText = '登录失败: ' + errorText;
+                errorMessage.classList.remove('hidden');
+            }
+        } catch (error) {
+            errorMessage.querySelector('span').innerText = '网络错误，无法连接到服务器。';
+            errorMessage.classList.remove('hidden');
+        } finally {
+            button.disabled = false;
+            button.innerText = '登 录';
+        }
+    }
+</script>
+</body>
+</html>

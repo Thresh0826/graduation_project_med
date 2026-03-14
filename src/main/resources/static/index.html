@@ -2,137 +2,797 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>医学影像科研平台 - 可视化预览</title>
+    <title>医学影像科研平台 - 智能管理中心</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        .viewer-container { background: #000; border-radius: 8px; position: relative; overflow: hidden; }
-        canvas { display: block; margin: 0 auto; cursor: crosshair; }
-        .info-overlay { position: absolute; top: 10px; left: 10px; color: #0f0; font-family: monospace; pointer-events: none; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .fade-in { animation: fadeIn 0.4s ease-out forwards; }
+        #sidebar { transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .sidebar-text { transition: opacity 0.2s; white-space: nowrap; }
+        .sidebar-collapsed .sidebar-text { opacity: 0; pointer-events: none; width: 0; }
+        .nav-active {
+            background: linear-gradient(90deg, rgba(56, 189, 248, 0.15) 0%, rgba(56, 189, 248, 0) 100%);
+            border-left: 3px solid #38bdf8;
+            color: #38bdf8 !important;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #38bdf8; margin-top: -6px; cursor: pointer;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 4px; cursor: pointer; background: #334155; border-radius: 2px;
+        }
+        .modal-bg { backdrop-filter: blur(5px); }
     </style>
 </head>
-<body class="bg-gray-900 min-h-screen text-gray-100 flex">
+<body class="bg-[#0f172a] text-slate-200 flex h-screen overflow-hidden font-sans selection:bg-cyan-500 selection:text-white">
 
-<div class="w-64 bg-gray-800 border-r border-gray-700 flex flex-col h-screen">
-    <div class="p-6">
-        <h1 class="text-xl font-bold text-blue-500 flex items-center">
-            <span class="mr-2">🔬</span>医学影像平台
-        </h1>
-    </div>
-    <nav class="flex-1 px-4 space-y-2">
-        <button onclick="switchModule('management')" id="nav-management"
-                class="w-full text-left py-3 px-4 rounded-lg transition bg-blue-600 text-white font-medium">
-            影像数据管理
+<!-- 左侧导航栏 -->
+<div id="sidebar" class="bg-[#1e293b] border-r border-slate-700/50 flex flex-col w-64 relative z-20 shadow-xl">
+    <div class="h-20 flex items-center justify-center border-b border-slate-700/50 relative">
+        <div class="flex items-center space-x-3 font-bold text-xl text-cyan-400 tracking-wider">
+            <i class="fa-solid fa-dna text-2xl drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]"></i>
+            <span class="sidebar-text">MedVision</span>
+        </div>
+        <button onclick="toggleSidebar()"
+                class="absolute -right-3 top-7 bg-[#334155] border border-slate-600 rounded-full w-7 h-7 flex items-center justify-center text-xs text-slate-300 hover:text-white hover:bg-cyan-600 transition shadow-lg cursor-pointer z-50">
+            <i id="collapse-icon" class="fa-solid fa-chevron-left transition-transform duration-300"></i>
         </button>
-        <button onclick="switchModule('analysis')" id="nav-analysis"
-                class="w-full text-left py-3 px-4 rounded-lg transition hover:bg-gray-700 text-gray-400">
-            影像解析模块
+    </div>
+
+    <nav class="flex-1 px-3 py-6 space-y-1.5 overflow-y-auto overflow-x-hidden">
+        <button onclick="switchModule('home')" id="nav-home" class="nav-item group w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all text-slate-400 hover:bg-slate-700/50 hover:text-slate-100">
+            <i class="fa-solid fa-house w-6 text-center text-lg transition group-hover:text-cyan-400"></i>
+            <span class="sidebar-text ml-3">系统首页</span>
+        </button>
+        <button onclick="switchModule('management')" id="nav-management" class="nav-item group w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all text-slate-400 hover:bg-slate-700/50 hover:text-slate-100">
+            <i class="fa-solid fa-folder-open w-6 text-center text-lg transition group-hover:text-blue-400"></i>
+            <span class="sidebar-text ml-3">影像管理</span>
+        </button>
+        <button onclick="switchModule('analysis')" id="nav-analysis" class="nav-item group w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all text-slate-400 hover:bg-slate-700/50 hover:text-slate-100">
+            <i class="fa-solid fa-microscope w-6 text-center text-lg transition group-hover:text-purple-400"></i>
+            <span class="sidebar-text ml-3">影像解析</span>
+        </button>
+        <button onclick="switchModule('dashboard')" id="nav-dashboard" class="nav-item group w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all text-slate-400 hover:bg-slate-700/50 hover:text-slate-100">
+            <i class="fa-solid fa-chart-pie w-6 text-center text-lg transition group-hover:text-emerald-400"></i>
+            <span class="sidebar-text ml-3">数据看板</span>
+        </button>
+
+        <div class="my-2 border-t border-slate-700/50 sidebar-text"></div>
+
+        <button onclick="switchModule('groups')" id="nav-groups" class="nav-item group w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all text-slate-400 hover:bg-slate-700/50 hover:text-slate-100">
+            <i class="fa-solid fa-users w-6 text-center text-lg transition group-hover:text-indigo-400"></i>
+            <span class="sidebar-text ml-3">课题组管理</span>
+        </button>
+        <button onclick="switchModule('messages')" id="nav-messages" class="nav-item group w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all text-slate-400 hover:bg-slate-700/50 hover:text-slate-100 relative">
+            <i class="fa-solid fa-envelope w-6 text-center text-lg transition group-hover:text-pink-400"></i>
+            <span class="sidebar-text ml-3">消息系统</span>
+            <span id="msg-badge" class="hidden absolute right-4 top-3.5 flex h-2 w-2">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+            </span>
+        </button>
+
+        <div class="my-2 border-t border-slate-700/50 sidebar-text"></div>
+
+        <button onclick="switchModule('logs')" id="nav-logs" class="nav-item group w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all text-slate-400 hover:bg-slate-700/50 hover:text-slate-100">
+            <i class="fa-solid fa-clock-rotate-left w-6 text-center text-lg transition group-hover:text-amber-400"></i>
+            <span class="sidebar-text ml-3">操作记录</span>
         </button>
     </nav>
-    <div class="p-4 border-t border-gray-700 text-xs text-gray-500">
-        刘杰 @ 2026 毕业设计
+
+    <!-- 用户信息 -->
+    <div class="p-4 border-t border-slate-700/50 bg-[#1e293b]">
+        <div class="flex items-center">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-lg ring-2 ring-slate-700">
+                <i class="fa-solid fa-user-astronaut"></i>
+            </div>
+            <div class="sidebar-text ml-3 overflow-hidden flex-1">
+                <p class="text-sm font-semibold text-slate-200 truncate" id="display-username">Loading...</p>
+                <p class="text-xs text-slate-500 truncate mt-0.5" id="display-role">科研人员</p>
+            </div>
+            <button onclick="logout()" class="sidebar-text ml-2 text-slate-500 hover:text-red-400 transition p-2 rounded-lg hover:bg-slate-700/50" title="退出登录">
+                <i class="fa-solid fa-power-off"></i>
+            </button>
+        </div>
     </div>
 </div>
 
-<div class="flex-1 h-screen overflow-y-auto p-8 bg-gray-900">
-
-    <div id="module-management" class="space-y-6">
-        <div class="flex justify-between items-center">
-            <h2 class="text-2xl font-bold">影像列表管理</h2>
-            <button onclick="document.getElementById('fileInput').click()"
-                    class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition flex items-center">
-                <span>+ 上传新影像</span>
-            </button>
+<!-- 主内容区 -->
+<main class="flex-1 flex flex-col h-screen overflow-hidden bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[#1e293b] via-[#0f172a] to-[#020617]">
+    <header class="h-16 flex items-center justify-between px-8 border-b border-slate-800/50 backdrop-blur-sm z-10 flex-shrink-0">
+        <h2 id="page-title" class="text-lg font-medium text-slate-200 tracking-wide flex items-center">
+            <i class="fa-solid fa-house mr-3 text-cyan-500"></i>系统首页
+        </h2>
+        <div class="flex items-center space-x-4">
+            <div id="group-status-badge" class="flex items-center px-3 py-1 rounded-full bg-slate-800/50 border border-slate-700/50 text-xs text-slate-400">
+                <i class="fa-solid fa-users-slash mr-2 text-gray-500"></i>无课题组
+            </div>
         </div>
-        <input type="file" id="fileInput" class="hidden">
+    </header>
 
-        <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-xl">
-            <table class="w-full text-left border-collapse">
-                <thead class="bg-gray-700 text-gray-300 text-sm uppercase">
-                <tr>
-                    <th class="px-6 py-4">文件名</th>
-                    <th class="px-6 py-4">格式/分辨率</th>
-                    <th class="px-6 py-4">上传时间</th>
-                    <th class="px-6 py-4 text-right">操作</th>
-                </tr>
-                </thead>
-                <tbody id="managementTableBody">
-                </tbody>
-            </table>
+    <div class="flex-1 overflow-y-auto p-8 relative scroll-smooth">
+
+        <!-- 0. 首页 -->
+        <div id="module-home" class="fade-in h-full flex flex-col items-center justify-center text-center pb-20">
+            <div class="w-32 h-32 rounded-full bg-gradient-to-tr from-cyan-500/20 to-blue-600/20 flex items-center justify-center mb-8 border border-cyan-500/30 shadow-[0_0_30px_rgba(6,182,212,0.15)] animate-pulse">
+                <i class="fa-solid fa-dna text-6xl text-cyan-400 drop-shadow-lg"></i>
+            </div>
+            <h1 class="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-slate-100 to-slate-400 mb-6">
+                欢迎进入医学影像科研平台
+            </h1>
+            <p class="text-xl text-slate-400 font-light mb-10">
+                您好，<span id="welcome-username" class="text-cyan-400 font-semibold border-b border-cyan-500/30 pb-0.5">User</span>
+            </p>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-4xl">
+                <button onclick="switchModule('groups')" class="group p-5 rounded-2xl glass-panel hover:bg-slate-800/80 transition border border-slate-700/50 hover:border-indigo-500/50 text-center">
+                    <i class="fa-solid fa-users text-2xl text-indigo-400 mb-2 group-hover:scale-110 transition-transform"></i>
+                    <h3 class="text-sm font-semibold text-slate-200">课题组大厅</h3>
+                </button>
+                <button onclick="switchModule('management')" class="group p-5 rounded-2xl glass-panel hover:bg-slate-800/80 transition border border-slate-700/50 hover:border-blue-500/50 text-center">
+                    <i class="fa-solid fa-cloud-arrow-up text-2xl text-blue-400 mb-2 group-hover:scale-110 transition-transform"></i>
+                    <h3 class="text-sm font-semibold text-slate-200">上传影像</h3>
+                </button>
+                <button onclick="switchModule('messages')" class="group p-5 rounded-2xl glass-panel hover:bg-slate-800/80 transition border border-slate-700/50 hover:border-pink-500/50 text-center">
+                    <i class="fa-solid fa-envelope text-2xl text-pink-400 mb-2 group-hover:scale-110 transition-transform"></i>
+                    <h3 class="text-sm font-semibold text-slate-200">消息审批</h3>
+                </button>
+                <button onclick="switchModule('dashboard')" class="group p-5 rounded-2xl glass-panel hover:bg-slate-800/80 transition border border-slate-700/50 hover:border-emerald-500/50 text-center">
+                    <i class="fa-solid fa-chart-pie text-2xl text-emerald-400 mb-2 group-hover:scale-110 transition-transform"></i>
+                    <h3 class="text-sm font-semibold text-slate-200">数据看板</h3>
+                </button>
+            </div>
+        </div>
+
+        <!-- 1. 影像管理模块 -->
+        <div id="module-management" class="hidden space-y-6 fade-in">
+            <div class="flex justify-between items-center glass-panel p-6 rounded-2xl">
+                <div>
+                    <h3 class="text-2xl font-bold text-slate-100">影像数据资产</h3>
+                    <p class="text-slate-400 text-sm mt-1">集中管理本组及全平台公开的科研数据集</p>
+                </div>
+                <button onclick="triggerUpload()" class="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white px-6 py-2.5 rounded-xl transition shadow-lg shadow-cyan-900/20 flex items-center font-medium transform hover:-translate-y-0.5">
+                    <i class="fa-solid fa-plus mr-2"></i>上传影像
+                </button>
+            </div>
+            <input type="file" id="fileInput" class="hidden">
+
+            <div class="glass-panel rounded-2xl overflow-hidden border-t border-slate-700/50">
+                <table class="w-full text-left">
+                    <thead class="bg-slate-800/80 text-slate-400 text-xs uppercase tracking-wider font-semibold">
+                    <tr>
+                        <th class="px-6 py-4">文件名</th>
+                        <th class="px-6 py-4">归属课题组</th>
+                        <th class="px-6 py-4">解析状态</th>
+                        <th class="px-6 py-4">权限</th>
+                        <th class="px-6 py-4">上传时间</th>
+                        <th class="px-6 py-4 text-right">操作</th>
+                    </tr>
+                    </thead>
+                    <tbody id="managementTableBody" class="divide-y divide-slate-800 text-sm text-slate-300"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 2. 影像解析模块 -->
+        <div id="module-analysis" class="hidden h-full flex flex-col fade-in">
+            <div class="flex items-center justify-between mb-4 flex-shrink-0">
+                <h3 class="text-xl font-bold flex items-center text-slate-200">
+                    <i class="fa-solid fa-wand-magic-sparkles mr-2 text-purple-400"></i>智能交互解析
+                    <span id="currentFileName" class="ml-4 text-xs font-normal text-slate-400 bg-slate-800 px-3 py-1 rounded-full border border-slate-700 hidden"></span>
+                </h3>
+            </div>
+
+            <div id="analysis-warning" class="hidden bg-red-500/10 border border-red-500/30 text-red-300 px-4 py-3 rounded-lg mb-4 flex items-center flex-shrink-0">
+                <i class="fa-solid fa-triangle-exclamation mr-2"></i>
+                <span id="warning-text"></span>
+            </div>
+
+            <div id="analysis-placeholder" class="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-slate-700/50 rounded-2xl text-slate-500 bg-slate-800/20">
+                <i class="fa-solid fa-microscope text-6xl mb-4 text-slate-700"></i>
+                <p>请先在“影像管理”列表中点击 <span class="text-cyan-400 font-medium">分析</span> 按钮</p>
+            </div>
+
+            <div id="analysis-content" class="hidden flex-1 flex flex-col bg-black rounded-2xl border border-slate-700 relative overflow-hidden shadow-2xl">
+                <div class="flex-1 flex items-center justify-center relative bg-black/50">
+                    <img id="medViewer" class="max-h-full max-w-full object-contain" src="" alt=""/>
+                </div>
+                <!-- 底部控制栏 -->
+                <div class="bg-slate-900/90 backdrop-blur border-t border-slate-800 p-4 space-y-4 flex-shrink-0">
+                    <div class="flex items-center space-x-4">
+                        <span class="text-xs text-slate-400 uppercase font-bold w-12">Slice Z</span>
+                        <input type="range" id="sliceSlider" min="0" max="100" value="0" class="flex-1 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500">
+                        <span class="text-cyan-400 font-mono text-sm font-bold w-12 text-right" id="sliceCounter">0/0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. 数据看板模块 -->
+        <div id="module-dashboard" class="hidden space-y-6 fade-in">
+            <h3 class="text-2xl font-bold mb-6 text-slate-100">科研数据驾驶舱</h3>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div class="glass-panel p-6 rounded-2xl relative overflow-hidden group border-t border-slate-700/50">
+                    <div class="absolute -right-6 -top-6 w-32 h-32 bg-cyan-500/10 rounded-full blur-2xl group-hover:bg-cyan-500/20 transition duration-500"></div>
+                    <h4 class="text-slate-400 text-sm font-medium uppercase tracking-wider">Total Datasets</h4>
+                    <p class="text-5xl font-bold text-white mt-3 font-mono" id="stat-total">0</p>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 h-96">
+                <div class="glass-panel p-6 rounded-2xl flex flex-col border-t border-slate-700/50">
+                    <h4 class="text-slate-300 font-medium mb-4 flex items-center"><i class="fa-solid fa-chart-pie mr-2 text-blue-400"></i>模态分布</h4>
+                    <div id="chart-modality" class="flex-1 w-full"></div>
+                </div>
+                <div class="glass-panel p-6 rounded-2xl flex flex-col border-t border-slate-700/50">
+                    <h4 class="text-slate-300 font-medium mb-4 flex items-center"><i class="fa-solid fa-file-code mr-2 text-emerald-400"></i>格式分布</h4>
+                    <div id="chart-format" class="flex-1 w-full"></div>
+                </div>
+                <div class="glass-panel p-6 rounded-2xl flex flex-col border-t border-slate-700/50">
+                    <h4 class="text-slate-300 font-medium mb-4 flex items-center"><i class="fa-solid fa-list-check mr-2 text-amber-400"></i>解析状态</h4>
+                    <div id="chart-status" class="flex-1 w-full"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. 课题组管理模块 -->
+        <div id="module-groups" class="hidden space-y-6 fade-in h-full flex flex-col">
+            <div class="flex justify-between items-center glass-panel p-6 rounded-2xl flex-shrink-0">
+                <div>
+                    <h3 class="text-2xl font-bold text-slate-100">课题组大厅</h3>
+                    <p class="text-slate-400 text-sm mt-1">寻找并加入您的科研团队</p>
+                </div>
+            </div>
+
+            <div class="flex-1 overflow-hidden flex gap-6">
+                <!-- 左侧：列表 -->
+                <div class="w-2/3 glass-panel rounded-2xl overflow-y-auto border-t border-slate-700/50 flex flex-col">
+                    <table class="w-full text-left">
+                        <thead class="bg-slate-800/80 text-slate-400 text-xs uppercase tracking-wider font-semibold sticky top-0 z-10">
+                        <tr>
+                            <th class="px-6 py-4">课题组名称</th>
+                            <th class="px-6 py-4">组长</th>
+                            <th class="px-6 py-4">主要方向</th>
+                            <th class="px-6 py-4 text-right">操作</th>
+                        </tr>
+                        </thead>
+                        <tbody id="groupTableBody" class="divide-y divide-slate-800 text-sm text-slate-300"></tbody>
+                    </table>
+                </div>
+
+                <!-- 右侧：详情面板 -->
+                <div class="w-1/3 glass-panel rounded-2xl p-6 border-t border-slate-700/50 flex flex-col overflow-y-auto">
+                    <div id="group-detail-empty" class="h-full flex flex-col items-center justify-center text-slate-500">
+                        <i class="fa-solid fa-users text-5xl mb-4 opacity-50"></i>
+                        <p>请在左侧列表中点击"查看"以显示详情</p>
+                    </div>
+                    <div id="group-detail-content" class="hidden space-y-6">
+                        <div class="flex items-center space-x-4 border-b border-slate-700 pb-6">
+                            <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-2xl font-bold text-white shadow-lg">
+                                <i class="fa-solid fa-atom"></i>
+                            </div>
+                            <div>
+                                <h2 id="gd-name" class="text-2xl font-bold text-white"></h2>
+                                <p id="gd-direction" class="text-indigo-400 text-sm mt-1"></p>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">课题组简介</h4>
+                            <p id="gd-desc" class="text-sm text-slate-300 leading-relaxed bg-slate-800/50 p-4 rounded-xl"></p>
+                        </div>
+                        <div>
+                            <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">团队成员</h4>
+                            <div id="gd-members" class="space-y-2">
+                                <!-- Members list -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. 消息系统模块 -->
+        <div id="module-messages" class="hidden space-y-6 fade-in h-full flex flex-col">
+            <div class="glass-panel p-2 rounded-xl flex space-x-2 w-max mb-2 flex-shrink-0">
+                <button onclick="switchMsgTab('todo')" id="tab-todo" class="px-6 py-2 rounded-lg text-sm font-medium transition-colors bg-pink-500/20 text-pink-400 border border-pink-500/30">待我审批</button>
+                <button onclick="switchMsgTab('sent')" id="tab-sent" class="px-6 py-2 rounded-lg text-sm font-medium transition-colors text-slate-400 hover:text-slate-200">我发出的申请</button>
+            </div>
+
+            <div class="flex-1 glass-panel rounded-2xl overflow-y-auto border-t border-slate-700/50">
+                <table class="w-full text-left">
+                    <thead class="bg-slate-800/80 text-slate-400 text-xs uppercase tracking-wider font-semibold sticky top-0 z-10">
+                    <tr id="msg-table-head">
+                        <!-- Dynamic header -->
+                    </tr>
+                    </thead>
+                    <tbody id="msgTableBody" class="divide-y divide-slate-800 text-sm text-slate-300"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 6. 操作记录模块 -->
+        <div id="module-logs" class="hidden space-y-6 fade-in">
+            <h3 class="text-2xl font-bold mb-6 text-slate-100">安全审计日志</h3>
+            <div class="glass-panel rounded-2xl overflow-hidden border-t border-slate-700/50">
+                <table class="w-full text-left">
+                    <thead class="bg-slate-800/80 text-slate-400 text-xs uppercase tracking-wider">
+                    <tr>
+                        <th class="px-6 py-4">时间</th>
+                        <th class="px-6 py-4">操作人</th>
+                        <th class="px-6 py-4">具体操作</th>
+                        <th class="px-6 py-4">所在模块</th>
+                        <th class="px-6 py-4">IP来源</th>
+                    </tr>
+                    </thead>
+                    <tbody id="logsTableBody" class="divide-y divide-slate-800 text-sm text-slate-300"></tbody>
+                </table>
+            </div>
         </div>
     </div>
+</main>
 
-    <div id="module-analysis" class="hidden space-y-6">
-        <h2 class="text-2xl font-bold mb-4">影像交互解析</h2>
-        <div id="analysis-placeholder" class="text-center py-20 border-2 border-dashed border-gray-700 rounded-xl">
-            请先在“影像管理”中选择一个影像，或点击右侧列表
+<!-- 【新增】上传共享策略选择弹窗 -->
+<div id="uploadModal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
+    <div class="absolute inset-0 bg-slate-950/80 modal-bg" onclick="closeUploadModal()"></div>
+    <div class="relative bg-slate-900 border border-slate-700 shadow-2xl rounded-2xl w-[400px] p-6 transform transition-all scale-100 opacity-100">
+        <h3 class="text-xl font-bold text-white mb-2"><i class="fa-solid fa-share-nodes text-blue-400 mr-2"></i>数据共享策略</h3>
+        <p class="text-slate-400 text-sm mb-6">请选择该影像数据的可见范围：</p>
+
+        <div class="space-y-3 mb-6">
+            <label class="flex items-center p-4 border border-slate-700 rounded-xl cursor-pointer hover:bg-slate-800 transition">
+                <input type="radio" name="uploadVis" value="2" class="w-4 h-4 text-blue-500 bg-slate-700 border-slate-600 focus:ring-blue-600">
+                <div class="ml-3">
+                    <span class="block text-slate-200 font-medium">共享给所有课题组</span>
+                    <span class="block text-slate-500 text-xs mt-0.5">全平台用户均可查看和分析</span>
+                </div>
+            </label>
+            <label class="flex items-center p-4 border border-slate-700 rounded-xl cursor-pointer hover:bg-slate-800 transition">
+                <input type="radio" name="uploadVis" value="1" checked class="w-4 h-4 text-blue-500 bg-slate-700 border-slate-600 focus:ring-blue-600">
+                <div class="ml-3">
+                    <span class="block text-slate-200 font-medium">仅本课题组可见</span>
+                    <span class="block text-slate-500 text-xs mt-0.5">仅限本组成员内部使用，严格保密</span>
+                </div>
+            </label>
+        </div>
+
+        <div class="flex justify-end space-x-3 mt-8">
+            <button onclick="closeUploadModal()" class="px-4 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition text-sm">取消</button>
+            <button onclick="confirmUpload()" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg transition shadow-lg text-sm font-medium">确认上传</button>
         </div>
     </div>
-
 </div>
 
 <script>
+    let isSidebarCollapsed = false;
+    let currentUser = {};
+    let pendingFile = null;
+
+    window.onload = function() {
+        checkLogin().then(() => {
+            switchModule('home');
+        });
+    };
+
+    // ====== 登录与全局状态 ======
+    async function checkLogin() {
+        try {
+            const res = await fetch('/api/user/current');
+            if (res.status === 401) {
+                window.location.href = '/login.html';
+                return Promise.reject();
+            } else {
+                currentUser = await res.json();
+                document.getElementById('display-username').innerText = currentUser.realName || currentUser.username;
+                document.getElementById('welcome-username').innerText = currentUser.realName || currentUser.username;
+
+                // 【修复：系统管理员身份展示与课题组状态】
+                const badge = document.getElementById('group-status-badge');
+                if (currentUser.role === 'admin') {
+                     badge.innerHTML = `<i class="fa-solid fa-user-shield mr-2 text-amber-400"></i>系统管理员`;
+                     badge.className = "flex items-center px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300";
+                     document.getElementById('display-role').innerText = '系统管理员';
+                     document.getElementById('display-role').className = "text-xs font-bold text-amber-400 truncate mt-0.5";
+                } else if (currentUser.groupId) {
+                    badge.innerHTML = `<i class="fa-solid fa-users mr-2 text-indigo-400"></i>${currentUser.groupName} ${currentUser.isLeader ? '<span class="ml-2 text-amber-400 text-[10px] bg-amber-400/10 px-1 rounded border border-amber-400/30">组长</span>' : ''}`;
+                    badge.className = "flex items-center px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-xs text-indigo-300";
+                    document.getElementById('display-role').innerText = currentUser.isLeader ? '课题组组长' : '课题组成员';
+                    document.getElementById('display-role').className = "text-xs text-slate-500 truncate mt-0.5";
+                } else {
+                    badge.innerHTML = `<i class="fa-solid fa-users-slash mr-2 text-gray-500"></i>无课题组`;
+                    document.getElementById('display-role').innerText = '未分配组别';
+                    document.getElementById('display-role').className = "text-xs text-slate-500 truncate mt-0.5";
+                }
+
+                if (currentUser.isLeader === 1 || currentUser.role === 'admin') checkUnreadMessages();
+                return Promise.resolve();
+            }
+        } catch (e) { window.location.href = '/login.html'; return Promise.reject();}
+    }
+
+    async function logout() { await fetch('/api/user/logout', { method: 'POST' }); window.location.href = '/login.html'; }
+
+    // ====== 导航与布局 ======
+    function toggleSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const icon = document.getElementById('collapse-icon');
+        isSidebarCollapsed = !isSidebarCollapsed;
+        if (isSidebarCollapsed) {
+            sidebar.classList.remove('w-64'); sidebar.classList.add('w-20', 'sidebar-collapsed'); icon.classList.add('rotate-180');
+        } else {
+            sidebar.classList.remove('w-20', 'sidebar-collapsed'); sidebar.classList.add('w-64'); icon.classList.remove('rotate-180');
+        }
+    }
+
     function switchModule(moduleName) {
-        // 1. 隐藏所有模块
-        document.getElementById('module-management').classList.add('hidden');
-        document.getElementById('module-analysis').classList.add('hidden');
-        // 2. 显示目标模块
-        document.getElementById('module-' + moduleName).classList.remove('hidden');
-        // 3. 样式切换逻辑...
+        ['home', 'management', 'analysis', 'dashboard', 'groups', 'messages', 'logs'].forEach(m => {
+            const mod = document.getElementById('module-' + m);
+            if (mod) mod.classList.add('hidden');
+            const nav = document.getElementById('nav-' + m);
+            if (nav) { nav.classList.remove('nav-active', 'bg-slate-800/50', 'text-slate-100'); nav.classList.add('text-slate-400'); }
+        });
+        const targetMod = document.getElementById('module-' + moduleName);
+        if (targetMod) targetMod.classList.remove('hidden');
+        const activeNav = document.getElementById('nav-' + moduleName);
+        if (activeNav) { activeNav.classList.remove('text-slate-400'); activeNav.classList.add('nav-active'); }
+
+        const titles = { 'home':'系统首页', 'management':'影像数据管理', 'analysis':'智能交互解析', 'dashboard':'数据驾驶舱', 'groups':'课题组管理', 'messages':'消息与审批', 'logs':'安全审计日志' };
+        const icons = { 'home':'fa-house', 'management':'fa-folder-open', 'analysis':'fa-microscope', 'dashboard':'fa-chart-pie', 'groups':'fa-users', 'messages':'fa-envelope', 'logs':'fa-clock-rotate-left' };
+        document.getElementById('page-title').innerHTML = `<i class="fa-solid ${icons[moduleName]} mr-3 text-cyan-500"></i>${titles[moduleName]}`;
+
+        if (moduleName === 'dashboard') setTimeout(loadDashboardData, 100);
+        if (moduleName === 'logs') loadLogs();
+        if (moduleName === 'management') loadManagementList();
+        if (moduleName === 'groups') loadGroups();
+        if (moduleName === 'messages') switchMsgTab('todo');
     }
 
-    // 渲染管理表格的逻辑
-    async function loadManagementList() {
-        const res = await fetch(`/api/image/list`);
-        const data = await res.json();
-        const html = data.map(img => `
-                <tr class="border-t border-gray-700 hover:bg-gray-750 transition">
-                    <td class="px-6 py-4 font-medium">${img.fileName}</td>
-                    <td class="px-6 py-4 text-gray-400 text-sm">${img.format} | ${img.dimX}x${img.dimY}x${img.dimZ}</td>
-                    <td class="px-6 py-4 text-gray-400 text-sm">${img.createTime}</td>
-                    <td class="px-6 py-4 text-right space-x-2">
-                        <button onclick="gotoAnalysis('${img.fileName}', ${img.dimZ})" class="text-blue-400 hover:underline">分析</button>
-                        <button onclick="deleteImage(${img.id})" class="text-red-400 hover:underline">删除</button>
-                    </td>
-                </tr>
-             `).join('');
-        document.getElementById('managementTableBody').innerHTML = html;
+    // ====== 影像管理 ======
+    function triggerUpload() {
+        if (!currentUser.groupId && currentUser.role !== 'admin') {
+            alert("请先加入课题组方可上传数据！");
+            return;
+        }
+        document.getElementById('fileInput').click();
     }
 
-    function gotoAnalysis(name, maxZ) {
-        switchModule('analysis');
-        openImage(name, maxZ); // 调用你原有的 openImage 函数
+    document.getElementById('fileInput').addEventListener('change', (e) => {
+        pendingFile = e.target.files[0];
+        if(!pendingFile) return;
+        document.getElementById('uploadModal').classList.remove('hidden');
+    });
+
+    function closeUploadModal() {
+        document.getElementById('uploadModal').classList.add('hidden');
+        document.getElementById('fileInput').value = '';
+        pendingFile = null;
     }
-    // 1. 定义 API 的地址（必须和后端对应）
-    const API = "/api/image";
 
-    // 2. 绑定上传事件（这是最容易丢的一段代码）
-    document.getElementById('fileInput').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return; // 如果没选文件，直接返回
+    async function confirmUpload() {
+        if(!pendingFile) return;
+        const vis = document.querySelector('input[name="uploadVis"]:checked').value;
+        const fd = new FormData();
+        fd.append('file', pendingFile);
+        fd.append('visibility', vis);
 
-        const formData = new FormData();
-        formData.append('file', file);
-
-        console.log("开始上传文件:", file.name); // 这行会在 F12 控制台显示
+        closeUploadModal();
 
         try {
-            const res = await fetch(`${API}/upload`, {
-                method: 'POST',
-                body: formData
-            });
+            const res = await fetch('/api/image/upload', { method: 'POST', body: fd });
+            if(res.ok) { alert('上传并排队解析中！'); loadManagementList(); }
+            else { alert('上传失败: ' + await res.text()); }
+        } catch(e) { alert('网络错误'); }
+    }
 
-            if (res.ok) {
-                alert("上传成功！"); // 弹窗提醒，让你直观看到反应
-                loadManagementList(); // 刷新那个管理表格，让新出的数据露面
-            } else {
-                const errorMsg = await res.text();
-                alert("上传失败: " + errorMsg);
-            }
-        } catch (err) {
-            console.error("网络请求出错:", err);
-            alert("无法连接到后端服务器，请检查 Java 是否启动");
+    async function loadManagementList() {
+        try {
+            const res = await fetch(`/api/image/list`);
+            const data = await res.json();
+            const html = data.map(img => {
+                const statusBadge = img.status === 1
+                    ? `<span class="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-xs border border-emerald-500/20">已解析</span>`
+                    : `<span class="bg-slate-700/50 text-slate-400 px-2 py-0.5 rounded text-xs border border-slate-600/50">未解析</span>`;
+
+                // 权限列渲染
+                let permBtn = '';
+                if (img.visibility === 2) {
+                    permBtn = `<span class="text-emerald-400 text-xs"><i class="fa-solid fa-globe mr-1"></i>公开共享</span>`;
+                } else {
+                    permBtn = `<span class="text-indigo-400 text-xs"><i class="fa-solid fa-lock mr-1"></i>本组私有</span>`;
+                }
+
+                // 如果是本组组长或admin，允许点击修改
+                if ((currentUser.isLeader === 1 && currentUser.groupId === img.groupId) || currentUser.role === 'admin') {
+                    const nextVis = img.visibility === 1 ? 2 : 1;
+                    const actionTxt = img.visibility === 1 ? '设为共享' : '设为私有';
+                    permBtn += ` <button onclick="toggleVisibility(${img.id}, ${nextVis})" class="ml-2 text-slate-500 hover:text-blue-400 text-xs underline">[${actionTxt}]</button>`;
+                }
+
+                return `
+                <tr class="hover:bg-slate-800/50 transition border-b border-slate-800/50 last:border-0">
+                    <td class="px-6 py-4 font-medium text-slate-200">
+                        <div class="flex items-center"><i class="fa-solid fa-file-medical text-blue-400 mr-2"></i>${img.fileName}</div>
+                        <div class="text-[10px] text-slate-500 mt-1">上传人: ${img.ownerName || 'Unknown'}</div>
+                    </td>
+                    <td class="px-6 py-4 text-slate-300 text-sm"><i class="fa-solid fa-users text-indigo-400/50 mr-1"></i>${img.groupName || '系统公开'}</td>
+                    <td class="px-6 py-4">${statusBadge}</td>
+                    <td class="px-6 py-4">${permBtn}</td>
+                    <td class="px-6 py-4 text-slate-500 text-xs">${img.createTime || '-'}</td>
+                    <td class="px-6 py-4 text-right space-x-3">
+                        <button onclick="gotoAnalysis('${img.fileName.replace(/'/g, "\\'")}', ${img.dimZ})" class="text-cyan-400 hover:text-cyan-300 text-sm"><i class="fa-solid fa-eye"></i></button>
+                        ${(currentUser.role === 'admin' || (currentUser.isLeader === 1 && currentUser.groupId === img.groupId)) ?
+                          `<button onclick="deleteImage(${img.id})" class="text-red-400 hover:text-red-300 text-sm"><i class="fa-solid fa-trash-can"></i></button>` : ''}
+                    </td>
+                </tr>`
+            }).join('');
+            document.getElementById('managementTableBody').innerHTML = html;
+        } catch (err) { console.error(err); }
+    }
+
+    async function toggleVisibility(id, newVis) {
+        if(!confirm(`确定要修改该影像的可见性吗？`)) return;
+        try {
+            const res = await fetch(`/api/image/visibility/${id}?visibility=${newVis}`, { method: 'PUT' });
+            if(res.ok) loadManagementList(); else alert(await res.text());
+        } catch(e) {}
+    }
+
+    async function deleteImage(id) {
+        if (!confirm("确定删除？")) return;
+        try { const res = await fetch(`/api/image/delete/${id}`, { method: 'DELETE' }); if (res.ok) loadManagementList(); else alert(await res.text()); } catch (e) {}
+    }
+
+    // ====== 影像解析 ======
+    function gotoAnalysis(name, maxZ) {
+        switchModule('analysis');
+        document.getElementById('currentFileName').innerText = name;
+        document.getElementById('currentFileName').classList.remove('hidden');
+        document.getElementById('analysis-placeholder').classList.add('hidden');
+        document.getElementById('analysis-content').classList.remove('hidden');
+        document.getElementById('analysis-content').classList.add('flex');
+        document.getElementById('analysis-warning').classList.add('hidden');
+
+        if (!maxZ || maxZ <= 1) {
+            document.getElementById('analysis-warning').classList.remove('hidden');
+            document.getElementById('warning-text').innerText = `元数据尚未就绪或解析失败，请检查文件格式。`;
+            const slider = document.getElementById('sliceSlider');
+            slider.max = 0; slider.value = 0; slider.disabled = true;
+            document.getElementById('medViewer').src = "";
+            return;
         }
-    });
+
+        const slider = document.getElementById('sliceSlider');
+        slider.disabled = false;
+        slider.max = maxZ > 0 ? maxZ - 1 : 0;
+        slider.value = Math.floor(slider.max / 2);
+        slider.oninput = (e) => loadSlice(name, e.target.value);
+        loadSlice(name, slider.value);
+    }
+
+    async function loadSlice(name, index) {
+        document.getElementById('sliceCounter').innerText = `${index}/${document.getElementById('sliceSlider').max}`;
+        try {
+            const res = await fetch(`/api/image/view?file=${name}&index=${index}`);
+            if(res.ok) {
+                const data = await res.json();
+                if(data && data.image) document.getElementById('medViewer').src = "data:image/png;base64," + data.image;
+            }
+        } catch(e) {}
+    }
+
+    // ====== 课题组大厅 ( Requirement I ) ======
+    async function loadGroups() {
+        try {
+            const res = await fetch('/api/group/list');
+            const data = await res.json();
+            const html = data.map(g => {
+                let actionBtn = '';
+                if (currentUser.role === 'admin') {
+                    actionBtn = `<span class="text-amber-400 text-xs">系统管理员</span>`;
+                } else if (currentUser.groupId === g.id) {
+                    actionBtn = currentUser.isLeader === 1
+                        ? `<span class="text-amber-400 text-xs border border-amber-400/30 px-2 py-1 rounded">我是组长</span>`
+                        : `<button onclick="applyQuit(${g.id})" class="text-red-400 hover:underline text-xs">申请退出</button>`;
+                } else if (!currentUser.groupId) {
+                    actionBtn = `<button onclick="applyJoin(${g.id})" class="text-emerald-400 hover:underline text-xs">申请加入</button>`;
+                } else {
+                    actionBtn = `<span class="text-slate-600 text-xs">无法操作</span>`;
+                }
+
+                return `
+                <tr class="hover:bg-slate-800/50 transition border-b border-slate-800/50 cursor-pointer" onclick="viewGroup(${g.id})">
+                    <td class="px-6 py-4 font-medium text-slate-200">${g.name}</td>
+                    <td class="px-6 py-4 text-slate-400 text-sm"><i class="fa-solid fa-crown text-amber-400/50 mr-1"></i>${g.leaderName || 'N/A'}</td>
+                    <td class="px-6 py-4 text-slate-400 text-xs truncate max-w-[150px]">${g.direction || '-'}</td>
+                    <td class="px-6 py-4 text-right space-x-2" onclick="event.stopPropagation()">
+                        <button onclick="viewGroup(${g.id})" class="text-cyan-400 hover:underline text-xs mr-2">查看</button>
+                        ${actionBtn}
+                    </td>
+                </tr>`;
+            }).join('');
+            document.getElementById('groupTableBody').innerHTML = html;
+        } catch(e){}
+    }
+
+    async function viewGroup(id) {
+        try {
+            const res = await fetch(`/api/group/detail/${id}`);
+            const data = await res.json();
+
+            document.getElementById('group-detail-empty').classList.add('hidden');
+            document.getElementById('group-detail-content').classList.remove('hidden');
+
+            document.getElementById('gd-name').innerText = data.name;
+            document.getElementById('gd-direction').innerText = data.direction || '无特定方向';
+            document.getElementById('gd-desc').innerText = data.description || '暂无简介';
+
+            // 成员展示
+            let membersHtml = '';
+            if (data.members && data.members.length > 0) {
+                membersHtml = data.members.map(m => `
+                    <div class="flex items-center justify-between bg-slate-800/30 p-2 rounded-lg border border-slate-700/50">
+                        <span class="text-slate-300 text-sm"><i class="fa-solid fa-user text-slate-500 mr-2"></i>${m.realName || m.username}</span>
+                        ${m.isLeader === 1 ? '<span class="text-amber-400 text-[10px] border border-amber-400/30 px-1.5 rounded">组长</span>' : '<span class="text-slate-500 text-[10px]">成员</span>'}
+                    </div>
+                `).join('');
+            } else {
+                membersHtml = '<div class="text-slate-500 text-sm">暂无成员</div>';
+            }
+            document.getElementById('gd-members').innerHTML = membersHtml;
+
+        } catch(e) { alert("获取详情失败"); }
+    }
+
+    async function applyJoin(groupId) {
+        if(!confirm("确定申请加入该课题组？")) return;
+        const reason = prompt("请输入申请理由 (可选):", "希望加入团队共同研究");
+        try {
+            const res = await fetch(`/api/group/apply/join?groupId=${groupId}&reason=${encodeURIComponent(reason||'')}`, { method: 'POST' });
+            alert(await res.text());
+        } catch(e){}
+    }
+
+    async function applyQuit(groupId) {
+        if(!confirm("确定申请退出该课题组？")) return;
+        const reason = prompt("请输入退出理由 (可选):", "个人原因退出");
+        try {
+            const res = await fetch(`/api/group/apply/quit?groupId=${groupId}&reason=${encodeURIComponent(reason||'')}`, { method: 'POST' });
+            alert(await res.text());
+        } catch(e){}
+    }
+
+    // ====== 消息与审批 ======
+    async function checkUnreadMessages() {
+        try {
+            const res = await fetch('/api/message/todo');
+            const data = await res.json();
+            const unread = data.filter(m => m.status === 'UNREAD').length;
+            if (unread > 0) {
+                document.getElementById('msg-badge').classList.remove('hidden');
+            } else {
+                document.getElementById('msg-badge').classList.add('hidden');
+            }
+        } catch(e){}
+    }
+
+    function switchMsgTab(tab) {
+        const btnTodo = document.getElementById('tab-todo');
+        const btnSent = document.getElementById('tab-sent');
+        const activeClass = "bg-pink-500/20 text-pink-400 border border-pink-500/30";
+        const inactiveClass = "text-slate-400 hover:text-slate-200 border border-transparent";
+
+        if (tab === 'todo') {
+            if(currentUser.isLeader !== 1 && currentUser.role !== 'admin') {
+                alert("您不是组长，无审批权限");
+                return;
+            }
+            btnTodo.className = `px-6 py-2 rounded-lg text-sm font-medium transition-colors ${activeClass}`;
+            btnSent.className = `px-6 py-2 rounded-lg text-sm font-medium transition-colors ${inactiveClass}`;
+            document.getElementById('msg-table-head').innerHTML = `
+                <th class="px-6 py-4">时间</th><th class="px-6 py-4">申请人</th><th class="px-6 py-4">类型</th><th class="px-6 py-4">理由</th><th class="px-6 py-4">状态</th><th class="px-6 py-4 text-right">操作</th>`;
+            loadMessages('/api/message/todo', true);
+        } else {
+            btnSent.className = `px-6 py-2 rounded-lg text-sm font-medium transition-colors ${activeClass}`;
+            btnTodo.className = `px-6 py-2 rounded-lg text-sm font-medium transition-colors ${inactiveClass}`;
+            document.getElementById('msg-table-head').innerHTML = `
+                <th class="px-6 py-4">时间</th><th class="px-6 py-4">目标课题组</th><th class="px-6 py-4">类型</th><th class="px-6 py-4">理由</th><th class="px-6 py-4">状态</th>`;
+            loadMessages('/api/message/sent', false);
+        }
+    }
+
+    async function loadMessages(url, isTodo) {
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            const html = data.map(msg => {
+                let typeTxt = msg.type === 'JOIN_APPLY' ? '<span class="text-emerald-400">申请加入</span>' : '<span class="text-red-400">申请退出</span>';
+                let statusBadge = '';
+                if(msg.status === 'UNREAD') statusBadge = '<span class="text-amber-400 text-xs border border-amber-400/30 px-2 py-0.5 rounded">待审批</span>';
+                else if(msg.status === 'APPROVED') statusBadge = '<span class="text-emerald-400 text-xs">已同意</span>';
+                else statusBadge = '<span class="text-slate-500 text-xs">已驳回</span>';
+
+                if (isTodo) {
+                    let actionBtn = msg.status === 'UNREAD' ? `
+                        <button onclick="handleApprove(${msg.id}, '${msg.type}', true)" class="text-emerald-400 hover:underline mr-2">同意</button>
+                        <button onclick="handleApprove(${msg.id}, '${msg.type}', false)" class="text-red-400 hover:underline">拒绝</button>
+                    ` : '<span class="text-slate-600">已处理</span>';
+
+                    return `<tr class="border-b border-slate-800/50">
+                        <td class="px-6 py-4 text-slate-500 text-xs">${msg.createTime}</td>
+                        <td class="px-6 py-4 text-slate-200">${msg.senderName}</td>
+                        <td class="px-6 py-4">${typeTxt}</td>
+                        <td class="px-6 py-4 text-slate-400 text-xs">${msg.content}</td>
+                        <td class="px-6 py-4">${statusBadge}</td>
+                        <td class="px-6 py-4 text-right text-xs">${actionBtn}</td>
+                    </tr>`;
+                } else {
+                    return `<tr class="border-b border-slate-800/50">
+                        <td class="px-6 py-4 text-slate-500 text-xs">${msg.createTime}</td>
+                        <td class="px-6 py-4 text-slate-200">${msg.groupName}</td>
+                        <td class="px-6 py-4">${typeTxt}</td>
+                        <td class="px-6 py-4 text-slate-400 text-xs">${msg.content}</td>
+                        <td class="px-6 py-4">${statusBadge}</td>
+                    </tr>`;
+                }
+            }).join('');
+            document.getElementById('msgTableBody').innerHTML = html;
+        } catch(e){}
+    }
+
+    async function handleApprove(id, type, isAgree) {
+        if(!confirm(`确定${isAgree?'同意':'拒绝'}该申请吗？`)) return;
+        const endpoint = type === 'JOIN_APPLY' ? '/api/message/approve/join' : '/api/message/approve/quit';
+        try {
+            const res = await fetch(`${endpoint}?messageId=${id}&isAgree=${isAgree}`, { method: 'POST' });
+            if(res.ok) {
+                alert("处理成功");
+                switchMsgTab('todo');
+                checkUnreadMessages();
+            } else { alert(await res.text()); }
+        } catch(e){}
+    }
+
+    // ====== 数据看板与日志 ======
+    async function loadDashboardData() {
+        try {
+            const res = await fetch('/api/image/stats');
+            const data = await res.json();
+            document.getElementById('stat-total').innerText = data.totalImages || 0;
+            initPieChart('chart-modality', '模态分布', data.modalityDistribution, ['#3b82f6', '#8b5cf6', '#ec4899']);
+            initPieChart('chart-format', '格式分布', data.formatDistribution, ['#10b981', '#f59e0b', '#6366f1']);
+            const statusData = (data.statusDistribution || []).map(item => ({ name: item.status === 1 ? '已解析' : '未解析', value: item.count }));
+            initPieChart('chart-status', '解析状态', statusData, ['#22c55e', '#ef4444']);
+        } catch (e) {}
+    }
+
+    function initPieChart(domId, name, data, colors) {
+        const dom = document.getElementById(domId);
+        if (!dom || dom.clientWidth === 0) return;
+        if (!data || data.length === 0) { dom.innerHTML = '<div class="h-full flex items-center justify-center text-slate-600">暂无数据</div>'; return; }
+        if (echarts.getInstanceByDom(dom)) echarts.getInstanceByDom(dom).dispose();
+        const chart = echarts.init(dom);
+        const formattedData = data.map(item => { if (item.name && item.value) return item; const val = item.count; let label = item.modality || item.format || item.status; return { name: label || 'Unknown', value: val }; });
+        const option = { tooltip: { trigger: 'item', backgroundColor: 'rgba(30,41,59,0.9)', borderColor: '#475569', textStyle: { color: '#fff' } }, legend: { bottom: '0%', textStyle: { color: '#94a3b8' }, itemWidth: 10, itemHeight: 10 }, color: colors, series: [{ name: name, type: 'pie', radius: ['40%', '70%'], center: ['50%', '45%'], itemStyle: { borderRadius: 5, borderColor: '#1e293b', borderWidth: 2 }, label: { show: false }, data: formattedData }] };
+        chart.setOption(option);
+        window.addEventListener('resize', () => chart.resize());
+    }
+
+    async function loadLogs() {
+        try {
+            const res = await fetch('/api/logs');
+            const data = await res.json();
+            const html = data.map(log => ` <tr class="hover:bg-slate-800/50 transition border-b border-slate-800/50 last:border-0"> <td class="px-6 py-4 text-slate-500 font-mono text-xs">${log.createTime || '-'}</td> <td class="px-6 py-4 font-medium text-slate-200">${log.username || 'N/A'}</td> <td class="px-6 py-4 text-cyan-400 text-xs">${log.operation || '-'}</td> <td class="px-6 py-4 text-slate-400 text-xs">${log.method || '-'}</td> <td class="px-6 py-4 text-slate-500 text-xs">${log.ip || '-'}</td> </tr> `).join(''); document.getElementById('logsTableBody').innerHTML = html;
+        } catch (e) {}
+    }
 </script>
 </body>
 </html>
