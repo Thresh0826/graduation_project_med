@@ -30,9 +30,11 @@ public class GroupService {
         SysGroup group = groupMapper.findById(id);
         if (group != null) {
             group.setMembers(userMapper.findByGroupId(id));
-            SysUser leader = userMapper.findById(group.getLeaderId());
-            if(leader != null) {
-                group.setLeaderName(leader.getRealName() != null ? leader.getRealName() : leader.getUsername());
+            if (group.getLeaderId() != null) {
+                SysUser leader = userMapper.findById(group.getLeaderId());
+                if(leader != null) {
+                    group.setLeaderName(leader.getRealName() != null ? leader.getRealName() : leader.getUsername());
+                }
             }
         }
         return group;
@@ -42,17 +44,13 @@ public class GroupService {
     public void applyJoin(Long userId, Long groupId, String reason) {
         SysGroup group = groupMapper.findById(groupId);
         if (group == null) throw new RuntimeException("课题组不存在");
+        if (group.getLeaderId() == null) throw new RuntimeException("该课题组暂无组长，无法处理申请");
 
-        // 【优化】防止重复提交加入申请
         List<SysMessage> sent = messageMapper.findBySenderId(userId);
         boolean hasPending = sent.stream().anyMatch(m -> 
-            m.getGroupId().equals(groupId) && 
-            "JOIN_APPLY".equals(m.getType()) && 
-            "UNREAD".equals(m.getStatus())
+            m.getGroupId().equals(groupId) && "JOIN_APPLY".equals(m.getType()) && "UNREAD".equals(m.getStatus())
         );
-        if (hasPending) {
-            throw new RuntimeException("您已提交过加入申请，请勿重复提交，等待组长审批");
-        }
+        if (hasPending) throw new RuntimeException("您已提交过加入申请，请勿重复提交");
 
         SysMessage msg = new SysMessage();
         msg.setSenderId(userId);
@@ -68,17 +66,13 @@ public class GroupService {
     public void applyQuit(Long userId, Long groupId, String reason) {
         SysGroup group = groupMapper.findById(groupId);
         if (group == null) throw new RuntimeException("课题组不存在");
+        if (group.getLeaderId() == null) throw new RuntimeException("该课题组暂无组长，无法处理申请");
 
-        // 【优化】防止重复提交退出申请
         List<SysMessage> sent = messageMapper.findBySenderId(userId);
         boolean hasPending = sent.stream().anyMatch(m -> 
-            m.getGroupId().equals(groupId) && 
-            "QUIT_APPLY".equals(m.getType()) && 
-            "UNREAD".equals(m.getStatus())
+            m.getGroupId().equals(groupId) && "QUIT_APPLY".equals(m.getType()) && "UNREAD".equals(m.getStatus())
         );
-        if (hasPending) {
-            throw new RuntimeException("您已提交过退出申请，请勿重复提交，等待组长审批");
-        }
+        if (hasPending) throw new RuntimeException("您已提交过退出申请，请勿重复提交");
 
         SysMessage msg = new SysMessage();
         msg.setSenderId(userId);
@@ -90,7 +84,6 @@ public class GroupService {
         messageMapper.insert(msg);
     }
 
-    // --- 审批流 ---
     @Transactional
     public void handleJoinApply(Long messageId, boolean isAgree, Long leaderId) {
         SysMessage msg = messageMapper.findById(messageId);
@@ -98,11 +91,9 @@ public class GroupService {
         if (!"UNREAD".equals(msg.getStatus())) throw new RuntimeException("消息已处理");
 
         if (isAgree) {
-            // 同意加入 (将该用户绑定到该组，且不作为组长)
             userMapper.updateUserGroup(msg.getSenderId(), msg.getGroupId(), 0);
             messageMapper.updateStatus(messageId, "APPROVED");
         } else {
-            // 拒绝
             messageMapper.updateStatus(messageId, "REJECTED");
         }
     }
@@ -114,16 +105,35 @@ public class GroupService {
         if (!"UNREAD".equals(msg.getStatus())) throw new RuntimeException("消息已处理");
 
         if (isAgree) {
-            // 同意退出
             userMapper.quitGroup(msg.getSenderId());
             messageMapper.updateStatus(messageId, "APPROVED");
         } else {
-            // 拒绝
             messageMapper.updateStatus(messageId, "REJECTED");
         }
     }
     
-    // --- 消息查询 ---
+    // 【新增】管理员指派组长
+    @Transactional
+    public void assignLeader(Long groupId, Long newLeaderId) {
+        SysGroup group = groupMapper.findById(groupId);
+        if (group == null) throw new RuntimeException("课题组不存在");
+        
+        SysUser newLeader = userMapper.findById(newLeaderId);
+        if (newLeader == null) throw new RuntimeException("指定的用户不存在");
+
+        // 1. 罢免旧组长 (如果存在)
+        if (group.getLeaderId() != null && !group.getLeaderId().equals(newLeaderId)) {
+            userMapper.updateUserGroup(group.getLeaderId(), group.getId(), 0); // 设为普通成员
+        }
+
+        // 2. 任命新组长
+        group.setLeaderId(newLeaderId);
+        groupMapper.update(group);
+        
+        // 3. 更新新组长自己的状态
+        userMapper.updateUserGroup(newLeaderId, groupId, 1);
+    }
+
     public List<SysMessage> getMyMessages(Long userId) {
         return messageMapper.findByReceiverId(userId); 
     }

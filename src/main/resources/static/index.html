@@ -177,7 +177,7 @@
             </div>
         </div>
 
-        <!-- 1. 影像管理模块 (Requirement III 修复) -->
+        <!-- 1. 影像管理模块 -->
         <div id="module-management" class="hidden space-y-6 fade-in">
             <div class="flex justify-between items-center glass-panel p-6 rounded-2xl">
                 <div>
@@ -195,7 +195,7 @@
                     <thead class="bg-slate-800/80 text-slate-400 text-xs uppercase tracking-wider font-semibold">
                     <tr>
                         <th class="px-6 py-4">文件名</th>
-                        <th class="px-6 py-4">数据类型</th> <!-- 【修复】单独分离的数据类型列 -->
+                        <th class="px-6 py-4">数据类型</th>
                         <th class="px-6 py-4">归属课题组</th>
                         <th class="px-6 py-4">尺寸 (Voxels)</th>
                         <th class="px-6 py-4">解析状态</th>
@@ -232,8 +232,9 @@
                 <div class="flex-1 flex items-center justify-center relative bg-black/50">
                     <img id="medViewer" class="max-h-full max-w-full object-contain" src="" alt="请调节滑块或等待..."/>
                 </div>
-                <!-- 底部控制栏 -->
+                <!-- 底部控制栏 (带防抖的WW/WL) -->
                 <div class="bg-slate-900/90 backdrop-blur border-t border-slate-800 p-4 space-y-4 flex-shrink-0">
+                    <!-- Slice Control -->
                     <div class="flex items-center space-x-4">
                         <span class="text-xs text-slate-400 uppercase font-bold w-12">Slice Z</span>
                         <input type="range" id="sliceSlider" min="0" max="100" value="0" class="flex-1 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500">
@@ -269,7 +270,7 @@
             </div>
         </div>
 
-        <!-- 4. 课题组管理模块 (Requirement II 布局重构) -->
+        <!-- 4. 课题组管理模块 (布局重构) -->
         <div id="module-groups" class="hidden space-y-6 fade-in h-full flex flex-col">
             <div class="flex justify-between items-center glass-panel p-6 rounded-2xl flex-shrink-0">
                 <div>
@@ -468,7 +469,7 @@
     </div>
 </div>
 
-<!-- 【新增 Requirement II】课题组详情弹窗 -->
+<!-- 课题组详情弹窗 -->
 <div id="groupModal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
     <div class="absolute inset-0 bg-slate-950/80 modal-bg" onclick="closeGroupModal()"></div>
     <div class="relative bg-[#1e293b] border border-slate-700 shadow-2xl rounded-2xl w-[600px] max-h-[80vh] flex flex-col transform transition-all overflow-hidden">
@@ -724,7 +725,7 @@
         } catch(e){}
     }
 
-    // ====== 影像管理 (Requirement III 修复) ======
+    // ====== 影像管理 ======
     function triggerUpload() {
         if (!currentUser.groupId && currentUser.role !== 'admin') {
             alert("请先加入课题组方可上传数据！"); return;
@@ -763,7 +764,6 @@
                     permBtn += ` <button onclick="toggleVisibility(${img.id}, ${nextVis})" class="ml-2 text-slate-500 hover:text-blue-400 text-xs underline">[${actionTxt}]</button>`;
                 }
 
-                // 【Requirement III 修复】数据类型字段分离
                 const dataTypeStr = `<div class="font-mono"><span class="text-blue-300 font-bold">${img.modality || 'UNK'}</span> <span class="text-slate-500 text-[10px]">/ ${img.format || 'RAW'}</span></div>`;
 
                 return `
@@ -802,7 +802,7 @@
     }
     async function loadSlice(name, index) { document.getElementById('sliceCounter').innerText = `${index}/${document.getElementById('sliceSlider').max}`; try { const res = await fetch(`/api/image/view?file=${name}&index=${index}`); if(res.ok) { const data = await res.json(); if(data && data.image) document.getElementById('medViewer').src = "data:image/png;base64," + data.image; } } catch(e) {} }
 
-    // ====== 课题组大厅 (Requirement II 重构卡片布局) ======
+    // ====== 课题组大厅 ======
     async function loadGroups() {
         try {
             const res = await fetch('/api/group/list');
@@ -860,7 +860,18 @@
             // 渲染操作按钮
             let actionBtn = '';
             if (currentUser.role === 'admin') {
-                actionBtn = `<span class="bg-slate-800 text-amber-400 text-xs px-3 py-1.5 rounded-lg border border-amber-400/30">您是管理员</span>`;
+                actionBtn = `
+                    <div class="flex items-center space-x-2">
+                        <select id="admin-assign-select-${data.id}" class="hidden bg-slate-800 text-xs text-white border border-slate-600 rounded px-2 py-1.5 focus:border-amber-500 outline-none">
+                        </select>
+                        <button id="admin-assign-btn-${data.id}" onclick="showAssignSelect(${data.id})" class="bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 text-xs px-3 py-1.5 rounded-lg border border-amber-500/30 transition shadow-lg">
+                            <i class="fa-solid fa-user-tie mr-1"></i>指派组长
+                        </button>
+                        <button id="admin-confirm-btn-${data.id}" onclick="confirmAssignLeader(${data.id})" class="hidden bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 text-xs px-3 py-1.5 rounded-lg border border-emerald-500/30 transition shadow-lg">
+                            <i class="fa-solid fa-check mr-1"></i>确认
+                        </button>
+                    </div>
+                `;
             } else if (currentUser.groupId === data.id) {
                 actionBtn = currentUser.isLeader === 1
                     ? `<span class="bg-slate-800 text-amber-400 text-xs px-3 py-1.5 rounded-lg border border-amber-400/30"><i class="fa-solid fa-crown mr-1"></i>我是组长</span>`
@@ -878,6 +889,37 @@
 
     function closeGroupModal() {
         document.getElementById('groupModal').classList.add('hidden');
+    }
+
+    async function showAssignSelect(groupId) {
+        try {
+            const res = await fetch('/api/admin/users');
+            const users = await res.json();
+            const select = document.getElementById(`admin-assign-select-${groupId}`);
+            select.innerHTML = '<option value="">选择新组长...</option>' + users.map(u => `<option value="${u.id}">${u.realName} (@${u.username})</option>`).join('');
+
+            select.classList.remove('hidden');
+            document.getElementById(`admin-confirm-btn-${groupId}`).classList.remove('hidden');
+            document.getElementById(`admin-assign-btn-${groupId}`).classList.add('hidden');
+        } catch (e) { alert("获取用户列表失败"); }
+    }
+
+    async function confirmAssignLeader(groupId) {
+        const leaderId = document.getElementById(`admin-assign-select-${groupId}`).value;
+        if (!leaderId) {
+            alert("请先从下拉框中选择一个用户！");
+            return;
+        }
+        try {
+            const res = await fetch(`/api/admin/group/assign-leader?groupId=${groupId}&leaderId=${leaderId}`, { method: 'POST' });
+            if(res.ok) {
+                alert("组长指派成功！");
+                openGroupModal(groupId); // 刷新弹窗内部数据
+                loadGroups(); // 刷新外层卡片列表（更新组长名字）
+            } else {
+                alert(await res.text());
+            }
+        } catch(e) { alert("网络错误"); }
     }
 
     async function applyJoin(gId) { if(!confirm("申请加入？")) return; const r = prompt("理由:", "希望加入"); try { const res = await fetch(`/api/group/apply/join?groupId=${gId}&reason=${encodeURIComponent(r||'')}`, { method: 'POST' }); if(res.ok){ alert("已提交"); closeGroupModal(); } else alert(await res.text()); } catch(e){} }
