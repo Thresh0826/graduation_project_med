@@ -7,8 +7,14 @@ import java.util.List;
 @Mapper
 public interface SysGroupMapper {
     
-    @Insert("INSERT INTO sys_group(name, direction, description, leader_id, create_time) " +
-            "VALUES(#{name}, #{direction}, #{description}, #{leaderId}, NOW())")
+    // 【核心修复】使用动态 SQL，处理 leaderId 可能为 null 的情况
+    @Insert("<script>" +
+            "INSERT INTO sys_group(name, direction, description, create_time" +
+            "<if test='leaderId != null'>, leader_id</if>" +
+            ") VALUES(#{name}, #{direction}, #{description}, NOW()" +
+            "<if test='leaderId != null'>, #{leaderId}</if>" +
+            ")" +
+            "</script>")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(SysGroup group);
 
@@ -27,7 +33,6 @@ public interface SysGroupMapper {
     @Select("SELECT * FROM sys_group WHERE id = #{id}")
     SysGroup findById(Long id);
     
-    // 【核心修复】增加 leader_id 的更新，解决新增组长不同步问题
     @Update("UPDATE sys_group SET name = #{name}, direction = #{direction}, description = #{description}, leader_id = #{leaderId} WHERE id = #{id}")
     int update(SysGroup group);
     
