@@ -26,3 +26,10 @@ file:
 
 server:
   port: 8080
+
+# 外部大模型 (阿里云通义千问 Qwen-VL) 接口配置
+ai:
+  qwen:
+    api-key: "sk-b05091000db9402a949b868829ee1d01" # 请在此处填入您的 DashScope API Key
+    model: "qwen-vl-plus"
+    endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"

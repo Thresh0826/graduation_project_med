@@ -121,17 +121,42 @@ public class GroupService {
         SysUser newLeader = userMapper.findById(newLeaderId);
         if (newLeader == null) throw new RuntimeException("指定的用户不存在");
 
-        // 1. 罢免旧组长 (如果存在)
         if (group.getLeaderId() != null && !group.getLeaderId().equals(newLeaderId)) {
-            userMapper.updateUserGroup(group.getLeaderId(), group.getId(), 0); // 设为普通成员
+            userMapper.updateUserGroup(group.getLeaderId(), group.getId(), 0); 
         }
 
-        // 2. 任命新组长
         group.setLeaderId(newLeaderId);
         groupMapper.update(group);
         
-        // 3. 更新新组长自己的状态
         userMapper.updateUserGroup(newLeaderId, groupId, 1);
+    }
+
+    // 【新增】组长踢人
+    @Transactional
+    public void kickMember(Long groupId, Long targetUserId, Long currentLeaderId) {
+        SysGroup group = groupMapper.findById(groupId);
+        if (group == null) throw new RuntimeException("课题组不存在");
+        
+        // 校验当前用户是否为该组的组长 (或者允许管理员操作)
+        SysUser leader = userMapper.findById(currentLeaderId);
+        boolean isLeader = group.getLeaderId() != null && group.getLeaderId().equals(currentLeaderId);
+        boolean isAdmin = leader != null && "admin".equals(leader.getRole());
+        
+        if (!isLeader && !isAdmin) {
+            throw new RuntimeException("权限不足，只有该课题组长或系统管理员可以移除成员");
+        }
+
+        if (targetUserId.equals(group.getLeaderId())) {
+            throw new RuntimeException("不能将组长移出课题组，请先指派新组长");
+        }
+
+        SysUser targetUser = userMapper.findById(targetUserId);
+        if (targetUser == null || targetUser.getGroupId() == null || !targetUser.getGroupId().equals(groupId)) {
+             throw new RuntimeException("目标用户不在此课题组中");
+        }
+
+        // 执行踢出
+        userMapper.quitGroup(targetUserId);
     }
 
     public List<SysMessage> getMyMessages(Long userId) {

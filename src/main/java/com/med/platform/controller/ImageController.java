@@ -4,6 +4,9 @@ import com.med.platform.config.LogAction;
 import com.med.platform.entity.MedImage;
 import com.med.platform.entity.SysUser;
 import com.med.platform.service.ImageService;
+import com.med.platform.service.ai.AIService;
+import com.med.platform.controller.dto.AnalysisRequest;
+import com.med.platform.controller.dto.AnalysisResponse;
 import com.med.platform.PythonBridgeService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +27,9 @@ public class ImageController {
 
     @Autowired
     private PythonBridgeService pythonBridge; 
+
+    @Autowired
+    private AIService aiService;
 
     @PostMapping("/upload")
     @LogAction(module = "影像管理", action = "上传影像") 
@@ -112,6 +118,26 @@ public class ImageController {
             return ResponseEntity.ok("删除成功");
         } catch (Exception e) {
             return ResponseEntity.status(500).body("删除失败: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/analyze")
+    @LogAction(module = "影像解析", action = "AI 智能分析影像切片")
+    public ResponseEntity<?> analyzeImage(@RequestBody AnalysisRequest request, HttpSession session) {
+        SysUser currentUser = (SysUser) session.getAttribute("user");
+        if (currentUser == null) {
+            return ResponseEntity.status(401).body("请先登录");
+        }
+
+        if (request == null || request.getImageBase64() == null || request.getImageBase64().isEmpty()) {
+            return ResponseEntity.badRequest().body("请求参数错误：缺失图像数据");
+        }
+
+        try {
+            String report = aiService.analyzeImage(request.getImageBase64());
+            return ResponseEntity.ok(new AnalysisResponse(report));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("AI 分析过程出现异常: " + e.getMessage());
         }
     }
 }

@@ -60,4 +60,18 @@ public class GroupController {
             return ResponseEntity.status(500).body(e.getMessage());
         }
     }
+
+    @DeleteMapping("/kick")
+    @LogAction(module = "课题组管理", action = "踢出成员")
+    public ResponseEntity<?> kickMember(@RequestParam Long groupId, @RequestParam Long targetUserId, HttpSession session) {
+        SysUser user = (SysUser) session.getAttribute("user");
+        if (user == null) return ResponseEntity.status(401).body("请登录");
+
+        try {
+            groupService.kickMember(groupId, targetUserId, user.getId());
+            return ResponseEntity.ok("已将该成员移出课题组");
+        } catch (Exception e) {
+            return ResponseEntity.status(403).body(e.getMessage());
+        }
+    }
 }
