@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.Collections;
+import java.util.Random;
 
 @Service
 public class ImageService {
@@ -28,6 +29,8 @@ public class ImageService {
 
     @Value("${file.upload-dir}")
     private String uploadDir;
+
+    private final Random random = new Random();
 
     public MedImage handleUpload(MultipartFile file, SysUser user, Integer visibility) throws IOException {
         if ((user.getGroupId() == null || user.getGroupId() <= 0) && !"admin".equals(user.getRole())) {
@@ -74,13 +77,63 @@ public class ImageService {
                 if (info.containsKey("modality")) {
                     medImage.setModality((String) info.get("modality"));
                 }
-            } 
+            }
+            
+            // 【需求七】在获取影像尺寸后生成 Mock 病灶数据
+            generateMockLesionData(medImage);
+            
             imageMapper.insert(medImage);
             return medImage;
         } catch (Exception e) {
             e.printStackTrace();
+            
+            // 异常情况下也尝试生成 Mock 数据（即使没有尺寸信息）
+            if (medImage.getDimX() == null) {
+                medImage.setDimX(256); // 默认值
+                medImage.setDimY(256);
+            }
+            generateMockLesionData(medImage);
+            
             imageMapper.insert(medImage); 
             return medImage;
+        }
+    }
+
+    /**
+     * 【需求七】为影像生成随机的 Mock 病灶数据
+     * 50% 概率生成一个椭圆区域的坐标信息
+     * 优化：病灶集中在图像中央区域（40%-60%），尺寸更小（2%-8%）
+     */
+    private void generateMockLesionData(MedImage medImage) {
+        // 50% 概率有病灶
+        boolean hasLesion = random.nextBoolean();
+        medImage.setHasMockLesion(hasLesion);
+        
+        if (hasLesion && medImage.getDimX() != null && medImage.getDimY() != null) {
+            // 随机生成椭圆参数（基于影像尺寸的相对位置）
+            int dimX = medImage.getDimX();
+            int dimY = medImage.getDimY();
+            
+            // 中心点：集中在图像中央区域（40%-60% 范围）
+            // 这样病灶会出现在实际解剖结构附近，而不是黑色背景区域
+            double centerX = dimX * (0.40 + random.nextDouble() * 0.20);
+            double centerY = dimY * (0.40 + random.nextDouble() * 0.20);
+            
+            // 长短轴：影像尺寸的 2%-8%（更小的病灶，更真实）
+            double radiusX = dimX * (0.02 + random.nextDouble() * 0.06);
+            double radiusY = dimY * (0.02 + random.nextDouble() * 0.06);
+            
+            // 构建 JSON 格式的病灶数据
+            String lesionJson = String.format(
+                "{\"centerX\":%.2f,\"centerY\":%.2f,\"radiusX\":%.2f,\"radiusY\":%.2f,\"type\":\"ellipse\"}",
+                centerX, centerY, radiusX, radiusY
+            );
+            medImage.setMockLesionData(lesionJson);
+            
+            // 日志输出（调试用）
+            System.out.println("[Mock 病灶] 生成病灶数据: " + lesionJson);
+        } else {
+            medImage.setMockLesionData(null);
         }
     }
 

@@ -244,8 +244,19 @@
             </div>
 
             <div id="analysis-content" class="hidden flex-1 flex flex-col bg-black rounded-2xl border border-slate-700 relative overflow-hidden shadow-2xl">
+                <!-- 顶部工具栏 -->
+                <div class="absolute top-4 right-4 z-20 flex items-center space-x-3">
+                    <button id="btn-toggle-lesion" onclick="toggleLesionOverlay()" disabled 
+                            class="bg-slate-800/90 backdrop-blur border border-slate-600 hover:border-red-500/50 text-slate-300 hover:text-red-400 px-4 py-2 rounded-lg transition-all flex items-center text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fa-solid fa-bullseye mr-2"></i>
+                        <span id="lesion-btn-text">病灶显像</span>
+                    </button>
+                </div>
+
                 <div class="flex-1 flex items-center justify-center relative bg-black/50">
                     <img id="medViewer" class="max-h-full max-w-full object-contain" crossorigin="anonymous" src="" alt="请调节滑块或等待..."/>
+                    <!-- Canvas 叠加层：用于绘制 Mock 病灶 -->
+                    <canvas id="lesionCanvas" class="absolute inset-0 pointer-events-none" style="z-index: 10;"></canvas>
                 </div>
                 <!-- 底部控制栏 (带防抖的WW/WL) -->
                 <div class="bg-slate-900/90 backdrop-blur border-t border-slate-800 p-4 space-y-4 flex-shrink-0">
@@ -564,12 +575,18 @@
     </div>
 </div>
 
+<!-- Toast 提示组件 -->
+<div id="toast-container" class="fixed top-6 left-1/2 transform -translate-x-1/2 z-[100] pointer-events-none"></div>
 
 <script>
     let isSidebarCollapsed = false;
     let currentUser = {};
     let pendingFile = null;
     let currentRawAiReport = ""; // 保存原始 markdown 用于下载
+    
+    // 【需求七】Mock 病灶相关状态
+    let currentImageMeta = null; // 当前影像的元数据（包含 hasMockLesion, mockLesionData）
+    let isLesionOverlayVisible = false; // 病灶图层是否可见
 
     window.onload = function() {
         checkLogin().then(() => {
@@ -847,7 +864,7 @@
                     <td class="px-6 py-4">${permBtn}</td>
                     <td class="px-6 py-4 text-slate-500 text-xs">${img.createTime || '-'}</td>
                     <td class="px-6 py-4 text-right space-x-3">
-                        <button onclick="gotoAnalysis('${img.fileName.replace(/'/g, "\\'")}', ${img.dimZ})" class="text-cyan-400 hover:text-cyan-300 text-sm"><i class="fa-solid fa-eye"></i></button>
+                        <button onclick='gotoAnalysis("${img.fileName.replace(/'/g, "\\'")}", ${img.dimZ}, ${JSON.stringify(img).replace(/'/g, "&apos;")})' class="text-cyan-400 hover:text-cyan-300 text-sm"><i class="fa-solid fa-eye"></i></button>
                         ${(currentUser.role === 'admin' || (currentUser.isLeader === 1 && currentUser.groupId === img.groupId)) ? `<button onclick="deleteImage(${img.id})" class="text-red-400 hover:text-red-300 text-sm"><i class="fa-solid fa-trash-can"></i></button>` : ''}
                     </td>
                 </tr>`
@@ -859,11 +876,16 @@
     async function toggleVisibility(id, newVis) { if(!confirm(`确定修改可见性吗？`)) return; try { const res = await fetch(`/api/image/visibility/${id}?visibility=${newVis}`, { method: 'PUT' }); if(res.ok) loadManagementList(); } catch(e) {} }
     async function deleteImage(id) { if (!confirm("确定删除？")) return; try { const res = await fetch(`/api/image/delete/${id}`, { method: 'DELETE' }); if (res.ok) loadManagementList(); } catch (e) {} }
 
-    function gotoAnalysis(name, maxZ) {
+    function gotoAnalysis(name, maxZ, imageMeta = null) {
         switchModule('analysis');
         document.getElementById('currentFileName').innerText = name; document.getElementById('currentFileName').classList.remove('hidden');
         document.getElementById('analysis-placeholder').classList.add('hidden'); document.getElementById('analysis-content').classList.remove('hidden'); document.getElementById('analysis-content').classList.add('flex');
         document.getElementById('analysis-warning').classList.add('hidden');
+
+        // 【需求七】保存当前影像的元数据（包含 Mock 病灶信息）
+        currentImageMeta = imageMeta;
+        isLesionOverlayVisible = false; // 重置病灶显像状态
+        updateLesionButtonState(); // 更新按钮状态
 
         // 初始化时禁用按钮，直到图片加载完成
         document.getElementById('btn-start-analysis').disabled = true;
@@ -1109,6 +1131,183 @@
     async function loadDashboardData() { try { const res = await fetch('/api/image/stats'); const data = await res.json(); document.getElementById('stat-total').innerText = data.totalImages || 0; initPieChart('chart-modality', '模态分布', data.modalityDistribution, ['#3b82f6', '#8b5cf6', '#ec4899']); initPieChart('chart-format', '格式分布', data.formatDistribution, ['#10b981', '#f59e0b', '#6366f1']); initPieChart('chart-status', '解析状态', (data.statusDistribution || []).map(i => ({ name: i.status === 1 ? '已解析' : '未解析', value: i.count })), ['#22c55e', '#ef4444']); } catch (e) {} }
     function initPieChart(domId, name, data, colors) { const dom = document.getElementById(domId); if (!dom || dom.clientWidth === 0) return; if (!data || data.length === 0) { dom.innerHTML = '<div class="h-full flex items-center justify-center text-slate-600">暂无数据</div>'; return; } if (echarts.getInstanceByDom(dom)) echarts.getInstanceByDom(dom).dispose(); const chart = echarts.init(dom); chart.setOption({ tooltip: { trigger: 'item', backgroundColor: 'rgba(30,41,59,0.9)', borderColor: '#475569', textStyle: { color: '#fff' } }, legend: { bottom: '0%', textStyle: { color: '#94a3b8' }, itemWidth: 10, itemHeight: 10 }, color: colors, series: [{ name: name, type: 'pie', radius: ['40%', '70%'], center: ['50%', '45%'], itemStyle: { borderRadius: 5, borderColor: '#1e293b', borderWidth: 2 }, label: { show: false }, data: data.map(item => ({ name: item.name || item.modality || item.format || item.status || 'Unknown', value: item.value || item.count })) }] }); window.addEventListener('resize', () => chart.resize()); }
     async function loadLogs() { try { const res = await fetch('/api/logs'); const data = await res.json(); document.getElementById('logsTableBody').innerHTML = data.map(log => ` <tr class="hover:bg-slate-800/50 transition border-b border-slate-800/50 last:border-0"> <td class="px-6 py-4 text-slate-500 font-mono text-xs">${log.createTime || '-'}</td> <td class="px-6 py-4 font-medium text-slate-200">${log.username || 'N/A'}</td> <td class="px-6 py-4 text-cyan-400 text-xs">${log.operation || '-'}</td> <td class="px-6 py-4 text-slate-400 text-xs">${log.method || '-'}</td> <td class="px-6 py-4 text-slate-500 text-xs">${log.ip || '-'}</td> </tr> `).join(''); } catch (e) {} }
+
+    // ====== 【需求七】Mock 病灶显像功能 ======
+    
+    /**
+     * Toast 提示函数
+     */
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        
+        const colors = {
+            info: 'bg-blue-500/90 border-blue-400/50',
+            success: 'bg-emerald-500/90 border-emerald-400/50',
+            warning: 'bg-amber-500/90 border-amber-400/50',
+            error: 'bg-red-500/90 border-red-400/50'
+        };
+        
+        const icons = {
+            info: 'fa-circle-info',
+            success: 'fa-check-circle',
+            warning: 'fa-triangle-exclamation',
+            error: 'fa-circle-xmark'
+        };
+        
+        toast.className = `${colors[type]} backdrop-blur border text-white px-6 py-3 rounded-xl shadow-2xl flex items-center space-x-3 mb-3 transform transition-all duration-300 opacity-0 translate-y-[-20px]`;
+        toast.innerHTML = `
+            <i class="fa-solid ${icons[type]}"></i>
+            <span class="text-sm font-medium">${message}</span>
+        `;
+        
+        container.appendChild(toast);
+        
+        // 动画进入
+        setTimeout(() => {
+            toast.classList.remove('opacity-0', 'translate-y-[-20px]');
+            toast.classList.add('opacity-100', 'translate-y-0');
+        }, 10);
+        
+        // 自动消失
+        setTimeout(() => {
+            toast.classList.remove('opacity-100', 'translate-y-0');
+            toast.classList.add('opacity-0', 'translate-y-[-20px]');
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+    
+    /**
+     * 更新病灶按钮状态
+     */
+    function updateLesionButtonState() {
+        const btn = document.getElementById('btn-toggle-lesion');
+        const btnText = document.getElementById('lesion-btn-text');
+        
+        if (!currentImageMeta) {
+            btn.disabled = true;
+            btnText.innerText = '病灶显像';
+            return;
+        }
+        
+        btn.disabled = false;
+        
+        if (currentImageMeta.hasMockLesion) {
+            if (isLesionOverlayVisible) {
+                btnText.innerText = '隐藏病灶';
+                btn.classList.add('border-red-500/50', 'text-red-400');
+                btn.classList.remove('border-slate-600', 'text-slate-300');
+            } else {
+                btnText.innerText = '病灶显像';
+                btn.classList.remove('border-red-500/50', 'text-red-400');
+                btn.classList.add('border-slate-600', 'text-slate-300');
+            }
+        } else {
+            btnText.innerText = '病灶显像';
+            btn.classList.remove('border-red-500/50', 'text-red-400');
+            btn.classList.add('border-slate-600', 'text-slate-300');
+        }
+    }
+    
+    /**
+     * 切换病灶显像开关（主入口）
+     */
+    function toggleLesionOverlay() {
+        if (!currentImageMeta) {
+            showToast('未加载影像数据', 'error');
+            return;
+        }
+        
+        // 分支 A：无病灶
+        if (!currentImageMeta.hasMockLesion) {
+            showToast('该图像无明显病灶，不做显示。', 'warning');
+            return;
+        }
+        
+        // 分支 B：有病灶 - 切换显示状态
+        isLesionOverlayVisible = !isLesionOverlayVisible;
+        
+        if (isLesionOverlayVisible) {
+            renderLesionOverlay();
+            showToast('已开启病灶显像', 'success');
+        } else {
+            clearLesionOverlay();
+            showToast('已关闭病灶显像', 'info');
+        }
+        
+        updateLesionButtonState();
+    }
+    
+    /**
+     * 渲染病灶叠加层（Canvas 绘制）
+     */
+    function renderLesionOverlay() {
+        const canvas = document.getElementById('lesionCanvas');
+        const imgElement = document.getElementById('medViewer');
+        
+        if (!canvas || !imgElement || !currentImageMeta.mockLesionData) {
+            console.error('无法渲染病灶：缺少必要元素');
+            return;
+        }
+        
+        // 解析病灶数据
+        const lesionData = JSON.parse(currentImageMeta.mockLesionData);
+        
+        // 设置 Canvas 尺寸与图片一致
+        canvas.width = imgElement.clientWidth;
+        canvas.height = imgElement.clientHeight;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // 计算缩放比例（原始影像尺寸 -> 显示尺寸）
+        const scaleX = canvas.width / currentImageMeta.dimX;
+        const scaleY = canvas.height / currentImageMeta.dimY;
+        
+        // 转换坐标到 Canvas 坐标系
+        const centerX = lesionData.centerX * scaleX;
+        const centerY = lesionData.centerY * scaleY;
+        const radiusX = lesionData.radiusX * scaleX;
+        const radiusY = lesionData.radiusY * scaleY;
+        
+        // 保存上下文状态
+        ctx.save();
+        
+        // 1. 应用高斯模糊效果（模拟真实分割边缘）
+        ctx.filter = 'blur(4px)';
+        
+        // 2. 绘制半透明红色椭圆（警示色）
+        ctx.beginPath();
+        ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.4)'; // 红色 40% 透明度
+        ctx.fill();
+        
+        // 3. 绘制边框（增强视觉效果）
+        ctx.filter = 'none'; // 边框不模糊
+        ctx.strokeStyle = 'rgba(255, 50, 50, 0.8)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // 4. 添加中心标记点
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 3, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.fill();
+        
+        // 恢复上下文状态
+        ctx.restore();
+    }
+    
+    /**
+     * 清除病灶叠加层
+     */
+    function clearLesionOverlay() {
+        const canvas = document.getElementById('lesionCanvas');
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+    }
 </script>
 </body>
 </html>
