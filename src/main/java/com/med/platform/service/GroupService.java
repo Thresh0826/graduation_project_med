@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Objects;
 
 @Service
 public class GroupService {
@@ -47,8 +48,8 @@ public class GroupService {
         if (group.getLeaderId() == null) throw new RuntimeException("该课题组暂无组长，无法处理申请");
 
         List<SysMessage> sent = messageMapper.findBySenderId(userId);
-        boolean hasPending = sent.stream().anyMatch(m -> 
-            m.getGroupId().equals(groupId) && "JOIN_APPLY".equals(m.getType()) && "UNREAD".equals(m.getStatus())
+        boolean hasPending = sent.stream().anyMatch(m ->
+            Objects.equals(m.getGroupId(), groupId) && "JOIN_APPLY".equals(m.getType()) && "UNREAD".equals(m.getStatus())
         );
         if (hasPending) throw new RuntimeException("您已提交过加入申请，请勿重复提交");
 
@@ -69,8 +70,8 @@ public class GroupService {
         if (group.getLeaderId() == null) throw new RuntimeException("该课题组暂无组长，无法处理申请");
 
         List<SysMessage> sent = messageMapper.findBySenderId(userId);
-        boolean hasPending = sent.stream().anyMatch(m -> 
-            m.getGroupId().equals(groupId) && "QUIT_APPLY".equals(m.getType()) && "UNREAD".equals(m.getStatus())
+        boolean hasPending = sent.stream().anyMatch(m ->
+            Objects.equals(m.getGroupId(), groupId) && "QUIT_APPLY".equals(m.getType()) && "UNREAD".equals(m.getStatus())
         );
         if (hasPending) throw new RuntimeException("您已提交过退出申请，请勿重复提交");
 
@@ -146,7 +147,7 @@ public class GroupService {
             throw new RuntimeException("权限不足，只有该课题组长或系统管理员可以移除成员");
         }
 
-        if (targetUserId.equals(group.getLeaderId())) {
+        if (Objects.equals(targetUserId, group.getLeaderId())) {
             throw new RuntimeException("不能将组长移出课题组，请先指派新组长");
         }
 

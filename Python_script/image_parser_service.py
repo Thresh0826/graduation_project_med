@@ -6,13 +6,13 @@
 
 import os
 import base64
+import threading
 import numpy as np
-import SimpleITK as sitk # 需要安装: pip install SimpleITK
+import SimpleITK as sitk
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from io import BytesIO
 from PIL import Image
-from cachetools import LRUCache 
 import pydicom
 
 app = FastAPI()
@@ -27,7 +27,30 @@ app.add_middleware(
 # --- 配置 ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(os.path.dirname(BASE_DIR), "med_data")
-IMAGE_CACHE = LRUCache(maxsize=3)
+IMAGE_CACHE = {}
+IMAGE_CACHE_LOCK = threading.Lock()
+IMAGE_CACHE_MAXSIZE = 3
+IMAGE_CACHE_KEYS = []  # FIFO eviction order for LRU approximation
+
+def _cache_put(key, value):
+    """Thread-safe cache insert with LRU eviction (caller must hold IMAGE_CACHE_LOCK)."""
+    if key in IMAGE_CACHE:
+        IMAGE_CACHE_KEYS.remove(key)
+    elif len(IMAGE_CACHE) >= IMAGE_CACHE_MAXSIZE:
+        oldest = IMAGE_CACHE_KEYS.pop(0)
+        IMAGE_CACHE.pop(oldest, None)
+    IMAGE_CACHE[key] = value
+    IMAGE_CACHE_KEYS.append(key)
+
+def _validate_path(filename: str) -> str:
+    """Validate and resolve a file path within DATA_DIR; raise HTTPException on path traversal."""
+    if not filename or not filename.strip():
+        raise HTTPException(status_code=400, detail="文件名不能为空")
+    resolved = os.path.normpath(os.path.join(DATA_DIR, filename))
+    norm_data_dir = os.path.normpath(DATA_DIR)
+    if not resolved.startswith(norm_data_dir + os.sep) and resolved != norm_data_dir:
+        raise HTTPException(status_code=403, detail="禁止访问指定路径")
+    return resolved
 
 # 默认的 Mask 类别颜色映射 (RGB 0-255)
 # 可以根据实际的 Mask 类别和需求进行调整
@@ -42,56 +65,23 @@ COLOR_MAP = {
 }
 
 def apply_windowing(slice_arr, ww, wl):
-    """ 
-    智能窗宽窗位转换算法 (回归自动版)
-    优先保证图像可见性，忽略传入的 ww/wl，强制自动拉伸
     """
-    c_min = slice_arr.min()
-    c_max = slice_arr.max()
-    
-    # 如果整张切片是完全空白的，直接返回纯黑
-    if c_max == c_min:
-        return np.zeros_like(slice_arr, dtype=np.uint8)
+    标准窗宽窗位转换算法。
+    当 ww <= 0 时回退到自动对比度拉伸（Min-Max Normalization）。
+    """
+    if ww <= 0:
+        c_min = slice_arr.min()
+        c_max = slice_arr.max()
+        if c_max == c_min:
+            return np.zeros_like(slice_arr, dtype=np.uint8)
+        slice_arr = ((slice_arr - c_min) / (c_max - c_min) * 255)
+        return slice_arr.astype(np.uint8)
 
-    # 强制自动对比度拉伸 (Auto Contrast / Min-Max Normalization)
-    # 将当前切片的像素值线性拉伸到 0-255 范围
-    # 这样无论原图是 CT、MRI 还是 Mask，都能看清结构
-    slice_arr = ((slice_arr - c_min) / (c_max - c_min) * 255)
-    
+    lower = wl - ww / 2
+    upper = wl + ww / 2
+    slice_arr = np.clip(slice_arr, lower, upper)
+    slice_arr = ((slice_arr - lower) / ww * 255)
     return slice_arr.astype(np.uint8)
-
-def resample_image_to_isotropic(image: sitk.Image) -> sitk.Image:
-    """
-    将非各向同性的 3D 图像重采样为各向同性（即体素间距均为 1x1x1 mm）
-    主要解决 3D 显示形变和比例失调问题。
-    """
-    original_spacing = image.GetSpacing()
-    original_size = image.GetSize()
-    
-    # 我们以 x 轴的间距作为各向同性的目标间距（或者可以求最小间距）
-    min_spacing = min(original_spacing)
-    new_spacing = [min_spacing, min_spacing, min_spacing]
-    
-    # 计算重采样后的新尺寸
-    new_size = [
-        int(round(original_size[0] * (original_spacing[0] / new_spacing[0]))),
-        int(round(original_size[1] * (original_spacing[1] / new_spacing[1]))),
-        int(round(original_size[2] * (original_spacing[2] / new_spacing[2])))
-    ]
-
-    resampler = sitk.ResampleImageFilter()
-    resampler.SetOutputSpacing(new_spacing)
-    resampler.SetSize(new_size)
-    resampler.SetOutputDirection(image.GetDirection())
-    resampler.SetOutputOrigin(image.GetOrigin())
-    resampler.SetTransform(sitk.Transform())
-    resampler.SetDefaultPixelValue(image.GetPixelIDValue())
-    
-    # 对于标签/Mask 使用最近邻插值，对于原图使用线性插值
-    # 这里为了通用性且避免引入新边界，默认使用线性。如果有明确要求可根据类型判断。
-    resampler.SetInterpolator(sitk.sitkLinear)
-
-    return resampler.Execute(image)
 
 def read_dicom_series(folder_path: str):
     """
@@ -111,44 +101,23 @@ def read_dicom_series(folder_path: str):
     
     try:
         image = reader.Execute()
-        
-        # 将原始像素转换为 numpy
+        # SimpleITK ImageSeriesReader with MetaDataDictionaryArrayUpdateOn()
+        # already applies RescaleSlope/RescaleIntercept to produce HU values.
         data = sitk.GetArrayFromImage(image)
-        
-        # 尝试应用 HU 值校准
-        # SimpleITK 有时会自动应用 Rescale Slope 和 Intercept，但为了稳妥我们手动检查
-        # 注意: metadata 中可能存在这些信息，如果没有则认为已经处理完毕
-        try:
-            # 读取第一张切片的元数据进行校准
-            slope_tag = "0028|1053"
-            intercept_tag = "0028|1052"
-            
-            if reader.HasMetaDataKey(0, slope_tag) and reader.HasMetaDataKey(0, intercept_tag):
-                slope = float(reader.GetMetaData(0, slope_tag))
-                intercept = float(reader.GetMetaData(0, intercept_tag))
-                
-                # 应用线性校准公式
-                data = data * slope + intercept
-                
-                # 更新 SITK 图像的像素（如果我们需要的话）
-                # 注意：这里我们仅更新了 numpy 数据，若需要更新 sitk image 可以重新构建
-                
-        except Exception as e:
-            print(f"DICOM HU 校准警告 (可能不是 CT 影像): {e}")
-
         return data, image
-        
+
     except Exception as e:
         raise RuntimeError(f"解析 DICOM 序列失败，可能存在损坏或非图像文件。详细错误: {e}")
 
 def load_medical_image(filename: str):
-    """ 
+    """
     增强型加载函数 (支持 NIfTI, DICOM 序列/单文件, NPZ)
     """
-    if filename in IMAGE_CACHE:
-        return IMAGE_CACHE[filename]
+    with IMAGE_CACHE_LOCK:
+        if filename in IMAGE_CACHE:
+            return IMAGE_CACHE[filename]
 
-    full_path = os.path.join(DATA_DIR, filename)
+    full_path = _validate_path(filename)
     if not os.path.exists(full_path):
         raise FileNotFoundError(f"找不到文件或目录: {full_path}")
 
@@ -161,17 +130,19 @@ def load_medical_image(filename: str):
             # 处理维度顺序 (Z, Y, X) -> (X, Y, Z)
             if data.ndim == 3:
                 data = np.transpose(data, (2, 1, 0))
-            IMAGE_CACHE[filename] = (data, itk_img)
+            with IMAGE_CACHE_LOCK:
+                _cache_put(filename, (data, itk_img))
             return data, itk_img
 
         # 2. 检查是否为 NPZ
         if filename.lower().endswith('.npz'):
             npz_file = np.load(full_path)
             data_dict = {key: npz_file[key] for key in npz_file.keys()}
-            
+
             # 对于 NPZ，我们缺乏标准的 spacing 信息，但需要提供默认结构
             # 若 NPZ 内嵌了 affine 矩阵（例如 'affine'），我们可以提取它
-            IMAGE_CACHE[filename] = (data_dict, None)
+            with IMAGE_CACHE_LOCK:
+                _cache_put(filename, (data_dict, None))
             return data_dict, None
 
         # 3. 单文件读取 (NIfTI, MHA, NRRD, 单个 DICOM)
@@ -215,12 +186,13 @@ def load_medical_image(filename: str):
             elif data.ndim == 4:
                 data = np.transpose(data, (3, 2, 1, 0))
             
-        IMAGE_CACHE[filename] = (data, itk_img) 
+        with IMAGE_CACHE_LOCK:
+            _cache_put(filename, (data, itk_img))
         return data, itk_img
         
     except Exception as e:
         print(f"加载失败: {e}")
-        raise e
+        raise
 
 def get_main_array_from_loaded_data(loaded_data):
     """ 从 load_medical_image 的返回中获取主图像数组 """
@@ -325,7 +297,7 @@ def inspect_image(filename: str):
             "format": format_str,
             "shape": list(data.shape),
             "spacing": spacing,                
-            "affine": direction,
+            "direction": direction,
             "modality": modality,              
             "msg": "解析成功"
         }

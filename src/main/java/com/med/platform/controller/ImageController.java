@@ -90,10 +90,13 @@ public class ImageController {
             @RequestParam(defaultValue = "axial") String axis,
             @RequestParam(defaultValue = "0") int index,
             @RequestParam(defaultValue = "400") float ww,
-            @RequestParam(defaultValue = "40") float wl) {
+            @RequestParam(defaultValue = "40") float wl,
+            @RequestParam(required = false) Long id) {
         try {
             Map<String, Object> result = pythonBridge.getSlice(file, axis, index, ww, wl);
-            imageService.markAsParsed(file);
+            if (id != null) {
+                imageService.markAsParsed(id);
+            }
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             System.err.println("查看切片失败: " + e.getMessage());
@@ -102,22 +105,18 @@ public class ImageController {
     }
 
     @DeleteMapping("/delete/{id}")
-    @LogAction(module = "影像管理", action = "删除影像") 
+    @LogAction(module = "影像管理", action = "删除影像")
     public ResponseEntity<?> delete(@PathVariable Long id, HttpSession session) {
         SysUser currentUser = (SysUser) session.getAttribute("user");
         if (currentUser == null) {
             return ResponseEntity.status(401).body("请先登录");
         }
 
-        if (!"admin".equals(currentUser.getRole()) && (currentUser.getIsLeader() == null || currentUser.getIsLeader() == 0)) {
-            return ResponseEntity.status(403).body("权限不足，只有管理员或组长可以删除影像。");
-        }
-        
         try {
-            imageService.deleteImage(id);
+            imageService.deleteImage(id, currentUser);
             return ResponseEntity.ok("删除成功");
         } catch (Exception e) {
-            return ResponseEntity.status(500).body("删除失败: " + e.getMessage());
+            return ResponseEntity.status(403).body(e.getMessage());
         }
     }
 

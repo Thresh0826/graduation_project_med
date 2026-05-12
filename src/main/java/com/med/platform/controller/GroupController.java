@@ -19,12 +19,16 @@ public class GroupController {
     private GroupService groupService;
 
     @GetMapping("/list")
-    public ResponseEntity<?> listGroups() {
+    public ResponseEntity<?> listGroups(HttpSession session) {
+        SysUser user = (SysUser) session.getAttribute("user");
+        if (user == null) return ResponseEntity.status(401).body("请先登录");
         return ResponseEntity.ok(groupService.getAllGroups());
     }
 
     @GetMapping("/detail/{id}")
-    public ResponseEntity<?> getDetail(@PathVariable Long id) {
+    public ResponseEntity<?> getDetail(@PathVariable Long id, HttpSession session) {
+        SysUser user = (SysUser) session.getAttribute("user");
+        if (user == null) return ResponseEntity.status(401).body("请先登录");
         SysGroup group = groupService.getGroupDetail(id);
         if (group != null) return ResponseEntity.ok(group);
         return ResponseEntity.status(404).body("课题组不存在");

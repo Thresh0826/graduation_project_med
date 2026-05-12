@@ -62,8 +62,8 @@ public interface MedImageMapper {
     @Update("UPDATE med_image SET is_deleted = 1 WHERE id = #{id}")
     int logicalDelete(Long id);
 
-    @Update("UPDATE med_image SET status = 1 WHERE file_name = #{fileName} AND is_deleted = 0")
-    void updateStatusToParsed(String fileName);
+    @Update("UPDATE med_image SET status = 1 WHERE id = #{id} AND is_deleted = 0")
+    void updateStatusToParsed(Long id);
     
     @Update("UPDATE med_image SET visibility = #{visibility} WHERE id = #{id}")
     int updateVisibility(@Param("id") Long id, @Param("visibility") Integer visibility);

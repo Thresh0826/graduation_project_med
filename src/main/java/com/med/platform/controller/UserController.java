@@ -80,49 +80,54 @@ public class UserController {
     public ResponseEntity<?> updateName(@RequestParam String realName, HttpSession session) {
         SysUser user = (SysUser) session.getAttribute("user");
         if (user == null) return ResponseEntity.status(401).body("请先登录");
-        
+
         try {
             userMapper.updateRealName(user.getId(), realName);
+            user.setRealName(realName);
+            session.setAttribute("user", user);
             return ResponseEntity.ok("姓名修改成功");
         } catch (Exception e) {
             return ResponseEntity.status(500).body("修改失败: " + e.getMessage());
         }
     }
-    
+
     @PutMapping("/profile/password")
     @LogAction(module = "个人中心", action = "修改密码")
     public ResponseEntity<?> updatePassword(@RequestBody Map<String, String> params, HttpSession session) {
         SysUser sessionUser = (SysUser) session.getAttribute("user");
         if (sessionUser == null) return ResponseEntity.status(401).body("请先登录");
-        
+
         String oldPwd = params.get("oldPassword");
         String newPwd = params.get("newPassword");
-        
+
         // 校验旧密码
         SysUser dbUser = userMapper.findById(sessionUser.getId());
         if (!passwordEncoder.matches(oldPwd, dbUser.getPassword())) {
             return ResponseEntity.badRequest().body("原密码错误");
         }
-        
+
         try {
             userMapper.updatePassword(sessionUser.getId(), passwordEncoder.encode(newPwd));
+            session.invalidate();
             return ResponseEntity.ok("密码修改成功，请重新登录");
         } catch (Exception e) {
             return ResponseEntity.status(500).body("修改失败: " + e.getMessage());
         }
     }
-    
+
     @PostMapping("/profile/avatar")
     @LogAction(module = "个人中心", action = "修改头像")
     public ResponseEntity<?> updateAvatar(@RequestParam("file") MultipartFile file, HttpSession session) {
         SysUser user = (SysUser) session.getAttribute("user");
         if (user == null) return ResponseEntity.status(401).body("请先登录");
-        
+
         try {
             byte[] bytes = file.getBytes();
             String base64Image = "data:" + file.getContentType() + ";base64," + Base64.getEncoder().encodeToString(bytes);
-            
+
             userMapper.updateAvatar(user.getId(), base64Image);
+            user.setAvatar(base64Image);
+            session.setAttribute("user", user);
             return ResponseEntity.ok(base64Image);
         } catch (Exception e) {
             return ResponseEntity.status(500).body("头像修改失败: " + e.getMessage());

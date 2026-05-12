@@ -46,33 +46,34 @@ public class AdminController {
 
     @PostMapping("/group/add")
     @LogAction(module = "系统管理", action = "新增课题组")
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public ResponseEntity<?> addGroup(@RequestBody SysGroup group, HttpSession session) {
         if (!isAdmin(session)) return ResponseEntity.status(403).body("仅系统管理员可用");
         if (group.getName() == null || group.getName().trim().isEmpty()) return ResponseEntity.badRequest().body("课题组名称不能为空");
         if (group.getDirection() == null || group.getDirection().trim().isEmpty()) return ResponseEntity.badRequest().body("研究方向不能为空");
 
-        try {
-            groupMapper.insert(group);
-            if (group.getLeaderId() != null) {
-                userMapper.updateUserGroup(group.getLeaderId(), group.getId(), 1);
+        groupMapper.insert(group);
+        if (group.getLeaderId() != null) {
+            // Reset previous leader if this group already had one
+            SysGroup existing = groupMapper.findById(group.getId());
+            if (existing != null && existing.getLeaderId() != null) {
+                userMapper.updateUserGroup(existing.getLeaderId(), existing.getId(), 0);
             }
-            return ResponseEntity.ok("课题组创建成功");
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body("创建失败: " + e.getMessage());
+            userMapper.updateUserGroup(group.getLeaderId(), group.getId(), 1);
         }
+        return ResponseEntity.ok("课题组创建成功");
     }
 
     @PostMapping("/user/add")
     @LogAction(module = "系统管理", action = "新增人员")
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public ResponseEntity<?> addUser(@RequestBody Map<String, Object> params, HttpSession session) {
         if (!isAdmin(session)) return ResponseEntity.status(403).body("仅系统管理员可用");
 
         String username = (String) params.get("username");
         String realName = (String) params.get("realName");
         String password = (String) params.get("password");
-        
+
         if (username == null || realName == null || password == null) {
             return ResponseEntity.badRequest().body("账号、姓名和密码为必填项");
         }
@@ -87,29 +88,32 @@ public class AdminController {
         newUser.setRole("researcher");
         newUser.setPassword(passwordEncoder.encode(password));
 
-        try {
-            userMapper.insert(newUser);
-            
-            Object groupIdObj = params.get("groupId");
-            Object isLeaderObj = params.get("isLeader");
-            
-            if (groupIdObj != null && !groupIdObj.toString().isEmpty()) {
-                Long groupId = Long.valueOf(groupIdObj.toString());
-                Integer isLeader = (isLeaderObj != null && Boolean.parseBoolean(isLeaderObj.toString())) ? 1 : 0;
-                userMapper.updateUserGroup(newUser.getId(), groupId, isLeader);
-                
-                if (isLeader == 1) {
-                    SysGroup g = groupMapper.findById(groupId);
-                    if(g != null) {
-                        g.setLeaderId(newUser.getId());
-                        groupMapper.update(g);
-                    }
+        userMapper.insert(newUser);
+
+        Object groupIdObj = params.get("groupId");
+        Object isLeaderObj = params.get("isLeader");
+
+        if (groupIdObj != null && !groupIdObj.toString().isEmpty()) {
+            Long groupId = Long.valueOf(groupIdObj.toString());
+            boolean isLeader = isLeaderObj != null && Boolean.parseBoolean(isLeaderObj.toString());
+            // Demote existing leader if assigning a new one
+            if (isLeader) {
+                SysGroup g = groupMapper.findById(groupId);
+                if (g != null && g.getLeaderId() != null) {
+                    userMapper.updateUserGroup(g.getLeaderId(), groupId, 0);
                 }
             }
-            return ResponseEntity.ok("人员新增成功");
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body("新增失败: " + e.getMessage());
+            userMapper.updateUserGroup(newUser.getId(), groupId, isLeader ? 1 : 0);
+
+            if (isLeader) {
+                SysGroup g = groupMapper.findById(groupId);
+                if (g != null) {
+                    g.setLeaderId(newUser.getId());
+                    groupMapper.update(g);
+                }
+            }
         }
+        return ResponseEntity.ok("人员新增成功");
     }
     
     // 【新增】指派组长接口

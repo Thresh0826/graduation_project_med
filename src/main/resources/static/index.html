@@ -6,6 +6,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -27,7 +28,7 @@
             background: linear-gradient(90deg, rgba(56, 189, 248, 0.15) 0%, rgba(56, 189, 248, 0) 100%);
             border-left: 3px solid #38bdf8;
             color: #38bdf8 !important;
-        }
+            }
         input[type=range]::-webkit-slider-thumb {
             -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #38bdf8; margin-top: -6px; cursor: pointer;
         }
@@ -60,6 +61,7 @@
     </style>
 </head>
 <body class="bg-[#0f172a] text-slate-200 flex h-screen overflow-hidden font-sans selection:bg-cyan-500 selection:text-white">
+<div id="global-toast" class="hidden opacity-0 fixed top-4 right-4 px-5 py-3 rounded-lg shadow-lg z-[100] text-sm font-medium transition-all duration-300"></div>
 
 <!-- 左侧导航栏 -->
 <div id="sidebar" class="bg-[#1e293b] border-r border-slate-700/50 flex flex-col w-64 relative z-20 shadow-xl">
@@ -587,6 +589,53 @@
     // 【需求七】Mock 病灶相关状态
     let currentImageMeta = null; // 当前影像的元数据（包含 hasMockLesion, mockLesionData）
     let isLesionOverlayVisible = false; // 病灶图层是否可见
+    let imageMetaMap = {}; // 用于数据属性方式存储影像元数据，避免 inline onclick XSS
+
+    // ====== 全局工具函数 ======
+    function escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.appendChild(document.createTextNode(str));
+        return div.innerHTML;
+    }
+
+    function showToast(msg, type = 'error') {
+        const toast = document.getElementById('global-toast');
+        if (!toast) return;
+        toast.textContent = msg;
+        toast.className = 'fixed top-4 right-4 px-5 py-3 rounded-lg shadow-lg z-[100] text-sm font-medium transition-all duration-300 ' +
+            (type === 'error' ? 'bg-red-600 text-white' : type === 'success' ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-200');
+        toast.classList.remove('hidden', 'opacity-0');
+        toast.classList.add('opacity-100');
+        clearTimeout(toast._timeout);
+        toast._timeout = setTimeout(() => { toast.classList.add('hidden'); }, 4000);
+    }
+
+    function safeInnerHTML(el, html) {
+        if (!el) return;
+        el.innerHTML = DOMPurify.sanitize(html, { ALLOWED_TAGS: ['b','i','em','strong','span','br','i','code','pre','h1','h2','h3','h4','h5','h6','ul','ol','li','p','a','table','thead','tbody','tr','th','td','img','div','mark','hr','blockquote','del','sup','sub'], ALLOWED_ATTR: ['href','src','alt','title','class','target','rel','colspan','rowspan'] });
+    }
+
+    async function apiFetch(url, options = {}) {
+        try {
+            const res = await fetch(url, options);
+            if (res.status === 401) {
+                sessionStorage.setItem('session_expired', '1');
+                window.location.href = '/login.html';
+                throw new Error('会话已过期，请重新登录');
+            }
+            return res;
+        } catch (e) {
+            if (e.message && e.message.includes('会话已过期')) throw e;
+            throw e;
+        }
+    }
+
+    // ====== Session过期提示 ======
+    if (sessionStorage.getItem('session_expired')) {
+        sessionStorage.removeItem('session_expired');
+        alert('会话已过期，请重新登录');
+    }
 
     window.onload = function() {
         checkLogin().then(() => {
@@ -712,7 +761,7 @@
             const res = await fetch(`/api/user/profile/name?realName=${encodeURIComponent(newName)}`, { method: 'PUT' });
             if(res.ok) { checkLogin(); openProfileModal(); }
             else alert(await res.text());
-        } catch(e){}
+        } catch(e){ showToast('修改姓名失败'); }
     }
 
     function togglePwdSection() {
@@ -739,7 +788,7 @@
             });
             if(res.ok) { alert('密码修改成功，请重新登录'); logout(); }
             else { alert(await res.text()); }
-        } catch(e){}
+        } catch(e){ showToast('密码修改失败'); }
     }
 
     async function uploadAvatar(e) {
@@ -751,7 +800,7 @@
             const res = await fetch('/api/user/profile/avatar', { method: 'POST', body: fd });
             if(res.ok) { checkLogin(); openProfileModal(); }
             else alert("上传失败");
-        } catch(e){}
+        } catch(e){ showToast('头像上传失败'); }
     }
 
     // ====== 系统运维管理 (Admin) ======
@@ -766,7 +815,7 @@
 
             let gOpts = '<option value="">暂不分配</option>' + groups.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
             document.getElementById('admin-user-group').innerHTML = gOpts;
-        } catch(e){}
+        } catch(e){ showToast('加载管理选项失败'); }
     }
 
     async function adminAddGroup() {
@@ -786,7 +835,7 @@
             });
             if(res.ok) { alert('添加课题组成功！'); document.getElementById('admin-group-name').value=''; loadAdminOptions(); }
             else alert(await res.text());
-        } catch(e){}
+        } catch(e){ showToast('添加课题组失败，请检查网络'); }
     }
 
     async function adminAddUser() {
@@ -807,7 +856,7 @@
             });
             if(res.ok) { alert('添加人员成功！'); document.getElementById('admin-user-username').value=''; loadAdminOptions(); }
             else alert(await res.text());
-        } catch(e){}
+        } catch(e){ showToast('操作失败，请重试'); }
     }
 
     // ====== 影像管理 ======
@@ -834,47 +883,72 @@
         try {
             const res = await fetch('/api/image/upload', { method: 'POST', body: fd });
             if(res.ok) { alert('上传并排队解析中！'); loadManagementList(); } else alert(await res.text());
-        } catch(e) {}
+        } catch(e) { showToast('操作失败，请重试'); }
     }
 
     async function loadManagementList() {
         try {
             const res = await fetch(`/api/image/list`);
             const data = await res.json();
+            imageMetaMap = {};
+            data.forEach(img => { imageMetaMap[img.id] = img; });
             const html = data.map(img => {
                 const statusBadge = img.status === 1 ? `<span class="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-xs border border-emerald-500/20">已解析</span>` : `<span class="bg-slate-700/50 text-slate-400 px-2 py-0.5 rounded text-xs border border-slate-600/50">未解析</span>`;
                 let permBtn = img.visibility === 2 ? `<span class="text-emerald-400 text-xs"><i class="fa-solid fa-globe mr-1"></i>公开共享</span>` : `<span class="text-indigo-400 text-xs"><i class="fa-solid fa-lock mr-1"></i>本组私有</span>`;
                 if ((currentUser.isLeader === 1 && currentUser.groupId === img.groupId) || currentUser.role === 'admin') {
                     const nextVis = img.visibility === 1 ? 2 : 1; const actionTxt = img.visibility === 1 ? '设为共享' : '设为私有';
-                    permBtn += ` <button onclick="toggleVisibility(${img.id}, ${nextVis})" class="ml-2 text-slate-500 hover:text-blue-400 text-xs underline">[${actionTxt}]</button>`;
+                    permBtn += ` <button data-action="visibility" data-id="${img.id}" data-vis="${nextVis}" class="ml-2 text-slate-500 hover:text-blue-400 text-xs underline">[${actionTxt}]</button>`;
                 }
 
-                const dataTypeStr = `<div class="font-mono"><span class="text-blue-300 font-bold">${img.modality || 'UNK'}</span> <span class="text-slate-500 text-[10px]">/ ${img.format || 'RAW'}</span></div>`;
+                const dataTypeStr = `<div class="font-mono"><span class="text-blue-300 font-bold">${escapeHtml(img.modality || 'UNK')}</span> <span class="text-slate-500 text-[10px]">/ ${escapeHtml(img.format || 'RAW')}</span></div>`;
 
                 return `
                 <tr class="hover:bg-slate-800/50 transition border-b border-slate-800/50 last:border-0">
                     <td class="px-6 py-4 font-medium text-slate-200">
-                        <div class="flex items-center"><i class="fa-solid fa-file-medical text-blue-400 mr-2"></i>${img.fileName}</div>
-                        <div class="text-[10px] text-slate-500 mt-1">上传人: ${img.ownerName || 'Unknown'}</div>
+                        <div class="flex items-center"><i class="fa-solid fa-file-medical text-blue-400 mr-2"></i>${escapeHtml(img.fileName)}</div>
+                        <div class="text-[10px] text-slate-500 mt-1">上传人: ${escapeHtml(img.ownerName || 'Unknown')}</div>
                     </td>
                     <td class="px-6 py-4 text-slate-300 text-sm">${dataTypeStr}</td>
-                    <td class="px-6 py-4 text-slate-300 text-sm"><i class="fa-solid fa-users text-indigo-400/50 mr-1"></i>${img.groupName || '系统公开'}</td>
+                    <td class="px-6 py-4 text-slate-300 text-sm"><i class="fa-solid fa-users text-indigo-400/50 mr-1"></i>${escapeHtml(img.groupName || '系统公开')}</td>
                     <td class="px-6 py-4 text-slate-500 font-mono text-xs">${img.dimX} x ${img.dimY} x ${img.dimZ}</td>
                     <td class="px-6 py-4">${statusBadge}</td>
                     <td class="px-6 py-4">${permBtn}</td>
                     <td class="px-6 py-4 text-slate-500 text-xs">${img.createTime || '-'}</td>
                     <td class="px-6 py-4 text-right space-x-3">
-                        <button onclick='gotoAnalysis("${img.fileName.replace(/'/g, "\\'")}", ${img.dimZ}, ${JSON.stringify(img).replace(/'/g, "&apos;")})' class="text-cyan-400 hover:text-cyan-300 text-sm"><i class="fa-solid fa-eye"></i></button>
-                        ${(currentUser.role === 'admin' || (currentUser.isLeader === 1 && currentUser.groupId === img.groupId)) ? `<button onclick="deleteImage(${img.id})" class="text-red-400 hover:text-red-300 text-sm"><i class="fa-solid fa-trash-can"></i></button>` : ''}
+                        <button data-action="view" data-id="${img.id}" class="text-cyan-400 hover:text-cyan-300 text-sm"><i class="fa-solid fa-eye"></i></button>
+                        ${(currentUser.role === 'admin' || (currentUser.isLeader === 1 && currentUser.groupId === img.groupId)) ? `<button data-action="delete" data-id="${img.id}" class="text-red-400 hover:text-red-300 text-sm"><i class="fa-solid fa-trash-can"></i></button>` : ''}
                     </td>
                 </tr>`
             }).join('');
             document.getElementById('managementTableBody').innerHTML = html;
-        } catch (err) {}
+        } catch (err) { showToast('加载影像列表失败，请检查网络连接'); }
     }
 
-    async function toggleVisibility(id, newVis) { if(!confirm(`确定修改可见性吗？`)) return; try { const res = await fetch(`/api/image/visibility/${id}?visibility=${newVis}`, { method: 'PUT' }); if(res.ok) loadManagementList(); } catch(e) {} }
-    async function deleteImage(id) { if (!confirm("确定删除？")) return; try { const res = await fetch(`/api/image/delete/${id}`, { method: 'DELETE' }); if (res.ok) loadManagementList(); } catch (e) {} }
+    // 管理列表按钮事件委托（文档级别，兼容动态加载的表格）
+    document.addEventListener('click', function(e) {
+        const btn = e.target.closest('button[data-action]');
+        if (!btn) return;
+        const action = btn.dataset.action;
+        const id = parseInt(btn.dataset.id);
+        if (action === 'view') {
+            const meta = imageMetaMap[id];
+            if (meta) {
+                gotoAnalysis(meta.filePath || meta.fileName, meta.dimZ, meta);
+            }
+        } else if (action === 'delete') {
+            if (confirm('确定删除该影像吗？此操作不可恢复。')) {
+                deleteImage(id);
+            }
+        } else if (action === 'visibility') {
+            const vis = parseInt(btn.dataset.vis);
+            toggleVisibility(id, vis);
+        }
+    });
+
+    async function toggleVisibility(id, newVis) { if(!confirm(`确定修改可见性吗？`)) return; try { const res = await fetch(`/api/image/visibility/${id}?visibility=${newVis}`, { method: 'PUT' }); if(res.ok) loadManagementList(); else showToast('权限修改失败'); } catch(e) { showToast('网络错误，权限修改失败'); } }
+    async function deleteImage(id) { if (!confirm("确定删除？")) return; try { const res = await fetch(`/api/image/delete/${id}`, { method: 'DELETE' }); if (res.ok) { loadManagementList(); showToast('删除成功', 'success'); } else { const msg = await res.text(); showToast('删除失败: ' + msg); } } catch (e) { showToast('网络错误，删除失败'); } }
+
+    let currentImageId = null;
 
     function gotoAnalysis(name, maxZ, imageMeta = null) {
         switchModule('analysis');
@@ -884,6 +958,7 @@
 
         // 【需求七】保存当前影像的元数据（包含 Mock 病灶信息）
         currentImageMeta = imageMeta;
+        currentImageId = imageMeta ? imageMeta.id : null;
         isLesionOverlayVisible = false; // 重置病灶显像状态
         updateLesionButtonState(); // 更新按钮状态
 
@@ -897,7 +972,9 @@
     async function loadSlice(name, index) {
         document.getElementById('sliceCounter').innerText = `${index}/${document.getElementById('sliceSlider').max}`;
         try {
-            const res = await fetch(`/api/image/view?file=${name}&index=${index}`);
+            let url = `/api/image/view?file=${encodeURIComponent(name)}&index=${index}`;
+            if (currentImageId) url += `&id=${currentImageId}`;
+            const res = await fetch(url);
             if(res.ok) {
                 const data = await res.json();
                 if(data && data.image) {
@@ -908,7 +985,7 @@
                     };
                 }
             }
-        } catch(e) {}
+        } catch(e) { showToast('操作失败，请重试'); }
     }
 
     // ====== AI 图像分析 ======
@@ -963,7 +1040,7 @@
 
                 // 使用 marked 将 markdown 转为 HTML
                 currentRawAiReport = data.report || "模型未返回有效内容";
-                document.getElementById('ai-result-content').innerHTML = marked.parse(currentRawAiReport);
+                safeInnerHTML(document.getElementById('ai-result-content'), marked.parse(currentRawAiReport));
 
                 document.getElementById('aiResultModal').classList.remove('hidden');
             } else {
@@ -1025,7 +1102,7 @@
                 </div>`;
             }).join('');
             document.getElementById('groupsGrid').innerHTML = html;
-        } catch(e){}
+        } catch(e){ showToast('操作失败，请重试'); }
     }
 
     async function openGroupModal(id) {
