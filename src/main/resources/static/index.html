@@ -258,7 +258,7 @@
                 <div class="flex-1 flex items-center justify-center relative bg-black/50">
                     <img id="medViewer" class="max-h-full max-w-full object-contain" crossorigin="anonymous" src="" alt="请调节滑块或等待..."/>
                     <!-- Canvas 叠加层：用于绘制 Mock 病灶 -->
-                    <canvas id="lesionCanvas" class="absolute inset-0 pointer-events-none" style="z-index: 10;"></canvas>
+                    <canvas id="lesionCanvas" class="absolute pointer-events-none hidden" style="z-index: 10;"></canvas>
                 </div>
                 <!-- 底部控制栏 (带防抖的WW/WL) -->
                 <div class="bg-slate-900/90 backdrop-blur border-t border-slate-800 p-4 space-y-4 flex-shrink-0">
@@ -960,6 +960,7 @@
         currentImageMeta = imageMeta;
         currentImageId = imageMeta ? imageMeta.id : null;
         isLesionOverlayVisible = false; // 重置病灶显像状态
+        clearLesionOverlay(); // 清除上次影像的病灶层
         updateLesionButtonState(); // 更新按钮状态
 
         // 初始化时禁用按钮，直到图片加载完成
@@ -982,6 +983,10 @@
                     imgElement.src = "data:image/png;base64," + data.image;
                     imgElement.onload = () => {
                         document.getElementById('btn-start-analysis').disabled = false;
+                        // Bug修复：切换切片后自动重绘病灶层
+                        if (isLesionOverlayVisible) {
+                            renderLesionOverlay();
+                        }
                     };
                 }
             }
@@ -1321,56 +1326,79 @@
     function renderLesionOverlay() {
         const canvas = document.getElementById('lesionCanvas');
         const imgElement = document.getElementById('medViewer');
-        
+
         if (!canvas || !imgElement || !currentImageMeta.mockLesionData) {
             console.error('无法渲染病灶：缺少必要元素');
             return;
         }
-        
+
         // 解析病灶数据
         const lesionData = JSON.parse(currentImageMeta.mockLesionData);
-        
-        // 设置 Canvas 尺寸与图片一致
-        canvas.width = imgElement.clientWidth;
-        canvas.height = imgElement.clientHeight;
-        
+
+        // 获取图片实际渲染区域（考虑 object-fit: contain 的留白）
+        const imgRect = imgElement.getBoundingClientRect();
+        const containerRect = imgElement.parentElement.getBoundingClientRect();
+
+        // 计算图片在容器内的实际偏移和尺寸
+        const imgDisplayWidth = imgElement.clientWidth;
+        const imgDisplayHeight = imgElement.clientHeight;
+        const offsetX = imgRect.left - containerRect.left + (imgRect.width - imgDisplayWidth) / 2;
+        const offsetY = imgRect.top - containerRect.top + (imgRect.height - imgDisplayHeight) / 2;
+
+        // Canvas 绘制面与图片实际像素尺寸一致
+        canvas.width = imgDisplayWidth;
+        canvas.height = imgDisplayHeight;
+
+        // Canvas CSS 定位对齐到图片实际渲染位置
+        canvas.style.left = offsetX + 'px';
+        canvas.style.top = offsetY + 'px';
+        canvas.style.width = imgDisplayWidth + 'px';
+        canvas.style.height = imgDisplayHeight + 'px';
+        canvas.classList.remove('hidden');
+
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // 计算缩放比例（原始影像尺寸 -> 显示尺寸）
-        const scaleX = canvas.width / currentImageMeta.dimX;
-        const scaleY = canvas.height / currentImageMeta.dimY;
-        
+
+        // 计算缩放比例（原始影像体素坐标 -> 显示像素坐标）
+        // Python np.rot90 将 (dimX, dimY) 旋转为 (dimY, dimX) 显示
+        // 显示时 width=dimY (旋转后的行), height=dimX (旋转后的列)
+        const displayW = currentImageMeta.dimY;  // 旋转后宽度 = 原 dimY
+        const displayH = currentImageMeta.dimX;  // 旋转后高度 = 原 dimX
+        const scaleX = canvas.width / displayW;
+        const scaleY = canvas.height / displayH;
+
         // 转换坐标到 Canvas 坐标系
-        const centerX = lesionData.centerX * scaleX;
-        const centerY = lesionData.centerY * scaleY;
+        // np.rot90 变换: original(row=X, col=Y) → new(row=dimY-1-Y, col=X)
+        // new(row) → canvas Y, new(col) → canvas X
+        const canvasX = lesionData.centerX * scaleX;
+        const canvasY = (currentImageMeta.dimY - 1 - lesionData.centerY) * scaleY;  // Y轴翻转修正
         const radiusX = lesionData.radiusX * scaleX;
         const radiusY = lesionData.radiusY * scaleY;
-        
+
         // 保存上下文状态
         ctx.save();
-        
+
         // 1. 应用高斯模糊效果（模拟真实分割边缘）
         ctx.filter = 'blur(4px)';
-        
+
         // 2. 绘制半透明红色椭圆（警示色）
         ctx.beginPath();
-        ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, 2 * Math.PI);
-        ctx.fillStyle = 'rgba(255, 0, 0, 0.4)'; // 红色 40% 透明度
+        ctx.ellipse(canvasX, canvasY, radiusX, radiusY, 0, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.4)';
         ctx.fill();
-        
+
         // 3. 绘制边框（增强视觉效果）
-        ctx.filter = 'none'; // 边框不模糊
+        ctx.filter = 'none';
         ctx.strokeStyle = 'rgba(255, 50, 50, 0.8)';
         ctx.lineWidth = 2;
         ctx.stroke();
-        
+
         // 4. 添加中心标记点
         ctx.beginPath();
-        ctx.arc(centerX, centerY, 3, 0, 2 * Math.PI);
+        ctx.arc(canvasX, canvasY, 3, 0, 2 * Math.PI);
         ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
         ctx.fill();
-        
+
         // 恢复上下文状态
         ctx.restore();
     }
@@ -1383,6 +1411,7 @@
         if (canvas) {
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            canvas.classList.add('hidden');
         }
     }
 </script>
