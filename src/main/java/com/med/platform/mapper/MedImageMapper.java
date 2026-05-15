@@ -7,8 +7,8 @@ import java.util.Map;
 
 @Mapper
 public interface MedImageMapper {
-    @Insert("INSERT INTO med_image(file_name, file_path, file_size, format, dim_x, dim_y, dim_z, is_deleted, modality, create_time, status, vox_res_x, vox_res_y, vox_res_z, visibility, owner_name, group_id, has_mock_lesion, mock_lesion_data) " +
-            "VALUES(#{fileName}, #{filePath}, #{fileSize}, #{format}, #{dimX}, #{dimY}, #{dimZ}, 0, #{modality}, NOW(), #{status}, #{voxResX}, #{voxResY}, #{voxResZ}, #{visibility}, #{ownerName}, #{groupId}, #{hasMockLesion}, #{mockLesionData})")
+    @Insert("INSERT INTO med_image(file_name, file_path, file_size, format, dim_x, dim_y, dim_z, is_deleted, modality, create_time, status, vox_res_x, vox_res_y, vox_res_z, visibility, owner_name, group_id, mask_file_name, mask_file_path, mask_file_size, mask_format, has_mask) " +
+            "VALUES(#{fileName}, #{filePath}, #{fileSize}, #{format}, #{dimX}, #{dimY}, #{dimZ}, 0, #{modality}, NOW(), #{status}, #{voxResX}, #{voxResY}, #{voxResZ}, #{visibility}, #{ownerName}, #{groupId}, #{maskFileName}, #{maskFilePath}, #{maskFileSize}, #{maskFormat}, #{hasMask})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(MedImage medImage);
 
@@ -29,8 +29,11 @@ public interface MedImageMapper {
             @Result(column = "owner_name", property = "ownerName"),
             @Result(column = "group_id", property = "groupId"),
             @Result(column = "groupName", property = "groupName"),
-            @Result(column = "has_mock_lesion", property = "hasMockLesion"),
-            @Result(column = "mock_lesion_data", property = "mockLesionData")
+            @Result(column = "mask_file_name", property = "maskFileName"),
+            @Result(column = "mask_file_path", property = "maskFilePath"),
+            @Result(column = "mask_file_size", property = "maskFileSize"),
+            @Result(column = "mask_format", property = "maskFormat"),
+            @Result(column = "has_mask", property = "hasMask")
     })
     List<MedImage> findAll();
 
@@ -47,12 +50,15 @@ public interface MedImageMapper {
             @Result(column = "create_time", property = "createTime"),
             @Result(column = "modality", property = "modality"),
             @Result(column = "status", property = "status"),
-            @Result(column = "visibility", property = "visibility"), 
+            @Result(column = "visibility", property = "visibility"),
             @Result(column = "owner_name", property = "ownerName"),
             @Result(column = "group_id", property = "groupId"),
             @Result(column = "groupName", property = "groupName"),
-            @Result(column = "has_mock_lesion", property = "hasMockLesion"),
-            @Result(column = "mock_lesion_data", property = "mockLesionData")
+            @Result(column = "mask_file_name", property = "maskFileName"),
+            @Result(column = "mask_file_path", property = "maskFilePath"),
+            @Result(column = "mask_file_size", property = "maskFileSize"),
+            @Result(column = "mask_format", property = "maskFormat"),
+            @Result(column = "has_mask", property = "hasMask")
     })
     List<MedImage> findVisibleByGroup(Long groupId);
 

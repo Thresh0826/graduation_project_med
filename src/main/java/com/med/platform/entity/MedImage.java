@@ -37,7 +37,10 @@ public class MedImage {
     // 前端展示用的冗余字段
     private String groupName;
 
-    // --- 需求七：Mock 病灶数据 ---
-    private Boolean hasMockLesion;
-    private String mockLesionData; // 存储 JSON 格式的坐标
+    // --- 真实标注 Mask 文件 ---
+    private String maskFileName;    // 原始标注文件名
+    private String maskFilePath;    // 存储后的标注文件名
+    private Long maskFileSize;      // 文件大小
+    private String maskFormat;      // 标注文件格式 (NPZ/NIfTI)
+    private Boolean hasMask;        // 是否有标注
 }

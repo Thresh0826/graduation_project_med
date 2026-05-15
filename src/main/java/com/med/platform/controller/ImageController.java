@@ -32,8 +32,9 @@ public class ImageController {
     private AIService aiService;
 
     @PostMapping("/upload")
-    @LogAction(module = "影像管理", action = "上传影像") 
-    public ResponseEntity<?> upload(@RequestParam("file") MultipartFile file, 
+    @LogAction(module = "影像管理", action = "上传影像")
+    public ResponseEntity<?> upload(@RequestParam("file") MultipartFile file,
+                                    @RequestParam(value = "maskFile", required = false) MultipartFile maskFile,
                                     @RequestParam(value = "visibility", defaultValue = "1") Integer visibility,
                                     HttpSession session) {
         SysUser currentUser = (SysUser) session.getAttribute("user");
@@ -41,7 +42,7 @@ public class ImageController {
 
         if (file.isEmpty()) return ResponseEntity.badRequest().body("请选择文件");
         try {
-            MedImage result = imageService.handleUpload(file, currentUser, visibility);
+            MedImage result = imageService.handleUpload(file, maskFile, currentUser, visibility);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             return ResponseEntity.status(500).body("操作失败: " + e.getMessage());
@@ -91,9 +92,11 @@ public class ImageController {
             @RequestParam(defaultValue = "0") int index,
             @RequestParam(defaultValue = "400") float ww,
             @RequestParam(defaultValue = "40") float wl,
-            @RequestParam(required = false) Long id) {
+            @RequestParam(required = false) Long id,
+            @RequestParam(required = false) String maskFile,
+            @RequestParam(defaultValue = "0.4") float alpha) {
         try {
-            Map<String, Object> result = pythonBridge.getSlice(file, axis, index, ww, wl);
+            Map<String, Object> result = pythonBridge.getSlice(file, axis, index, ww, wl, maskFile, alpha);
             if (id != null) {
                 imageService.markAsParsed(id);
             }

@@ -33,13 +33,18 @@ public class PythonBridgeService {
     }
 
     /**
-     * 调用Python获取切片数据
+     * 调用Python获取切片数据（可选Mask叠加）
      */
-    public Map<String, Object> getSlice(String filename, String axis, int index, float ww, float wl) {
+    public Map<String, Object> getSlice(String filename, String axis, int index, float ww, float wl,
+                                         String maskFilename, float alpha) {
         String encodedFilename = URLEncoder.encode(filename, StandardCharsets.UTF_8);
         String encodedAxis = URLEncoder.encode(axis, StandardCharsets.UTF_8);
         String url = String.format("%s/api/slice?filename=%s&axis=%s&index=%d&ww=%f&wl=%f",
                 pythonUrl, encodedFilename, encodedAxis, index, ww, wl);
+        if (maskFilename != null && !maskFilename.isEmpty()) {
+            url += "&mask_filename=" + URLEncoder.encode(maskFilename, StandardCharsets.UTF_8);
+            url += "&alpha=" + alpha;
+        }
         return restTemplate.getForObject(url, Map.class);
     }
 }

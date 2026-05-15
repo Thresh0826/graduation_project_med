@@ -3,6 +3,8 @@ uvicorn==0.27.0
 numpy==1.26.3
 SimpleITK==2.3.1
 Pillow==10.2.0
-cachetools==5.3.2
 python-multipart==0.0.6
 pydicom==2.4.4
+python-gdcm>=3.0
+pylibjpeg>=2.0
+pylibjpeg-libjpeg>=2.1

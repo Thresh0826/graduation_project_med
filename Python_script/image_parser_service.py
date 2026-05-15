@@ -53,15 +53,18 @@ def _validate_path(filename: str) -> str:
     return resolved
 
 # 默认的 Mask 类别颜色映射 (RGB 0-255)
-# 可以根据实际的 Mask 类别和需求进行调整
 # 类别 0 通常是背景，不着色
+# 通用标签 (适用于大多数通用分割数据集)
 COLOR_MAP = {
-    1: (255, 0, 0),    # 类别 1: 红色 (例如: 肿瘤)
-    2: (0, 255, 0),    # 类别 2: 绿色 (例如: 囊肿)
-    3: (0, 0, 255),    # 类别 3: 蓝色 (例如: 血管)
-    4: (255, 255, 0),  # 类别 4: 黄色
-    5: (0, 255, 255),  # 类别 5: 青色
-    6: (255, 0, 255),  # 类别 6: 品红色
+    1: (255, 0, 0),    # 红色 — 肿瘤 / 病变区域
+    2: (0, 255, 0),    # 绿色 — 外周带 (PZ) / 器官实质
+    3: (0, 0, 255),    # 蓝色 — 移行带 (TZ) / 中央腺体
+    4: (255, 255, 0),  # 黄色 — 前纤维肌肉基质 (AFS)
+    5: (0, 255, 255),  # 青色 — 尿道 / 管腔结构
+    6: (255, 0, 255),  # 品红色 — 水肿 / 其他异常
+    7: (128, 0, 128),  # 紫色
+    8: (255, 165, 0),  # 橙色
+    9: (128, 128, 128),# 灰色 — 直肠壁 / 边界
 }
 
 def apply_windowing(slice_arr, ww, wl):
@@ -147,37 +150,57 @@ def load_medical_image(filename: str):
 
         # 3. 单文件读取 (NIfTI, MHA, NRRD, 单个 DICOM)
         itk_img = sitk.ReadImage(full_path)
-        
-        # 检查是否为单张 DICOM 并尝试 HU 校准 (使用 pydicom 辅助)
+
+        # 检查是否为单张 DICOM — 使用 pydicom 获取完整元数据
         if filename.lower().endswith(('.dcm', '.dicom')):
             try:
                 ds = pydicom.dcmread(full_path)
-                data = ds.pixel_array
-                
-                # 读取 Rescale 标签
-                slope = getattr(ds, 'RescaleSlope', 1)
-                intercept = getattr(ds, 'RescaleIntercept', 0)
-                
-                # 转 HU
+                data = ds.pixel_array.astype(np.float64)
+
+                # --- MONOCHROME1 反转 (某些超声/X光影像 0=白) ---
+                photometric = getattr(ds, 'PhotometricInterpretation', '')
+                if photometric == 'MONOCHROME1' and data.ndim >= 2:
+                    data = np.max(data) - data
+
+                # --- 读取 Rescale Slope/Intercept 线性校准 ---
+                slope = float(getattr(ds, 'RescaleSlope', 1) or 1)
+                intercept = float(getattr(ds, 'RescaleIntercept', 0) or 0)
                 if slope != 1 or intercept != 0:
-                     data = data * slope + intercept
-                     
-                # 重新构建 sitk image 以保持元数据同步
-                # 但此处为了简便，我们只处理用于渲染的 data 数组
-                
-                # pydicom 读取的数据维度可能是 2D (Y, X)，我们需要统一到 3D (X, Y, 1)
+                    data = data * slope + intercept
+
+                # --- 处理维度：统一为 3D (X, Y, Z) ---
                 if data.ndim == 2:
-                    data = data.T # 转为 (X, Y)
-                    data = np.expand_dims(data, axis=-1) # (X, Y, 1)
-                    
+                    data = data.T  # (Y, X) → (X, Y)
+                    data = np.expand_dims(data, axis=-1)  # (X, Y, 1)
+                elif data.ndim == 3:
+                    # 可能是 (frame, Y, X) 多帧 DICOM 或 (Z, Y, X) 增强型
+                    data = np.transpose(data, (2, 1, 0))  # → (X, Y, Z)
+                elif data.ndim == 4:
+                    # 多帧 RGB DICOM: (frame, Y, X, channel) → (X, Y, Z, channel)
+                    data = np.transpose(data, (2, 1, 0, 3))
+
+                # --- 更新 itk_img 的 spacing/direction 为 pydicom 读到值 ---
+                try:
+                    spacing = list(itk_img.GetSpacing())
+                    if hasattr(ds, 'PixelSpacing'):
+                        spacing[0] = float(ds.PixelSpacing[0])
+                        spacing[1] = float(ds.PixelSpacing[1])
+                    if hasattr(ds, 'SliceThickness'):
+                        spacing[2] = float(ds.SliceThickness)
+                    itk_img.SetSpacing(spacing)
+                except Exception:
+                    pass
+
             except Exception as e:
-                 print(f"pydicom 解析单张 DICOM 警告: {e}，回退至 SimpleITK")
-                 data = sitk.GetArrayFromImage(itk_img)
-                 if data.ndim == 2:
-                     data = data.T
-                     data = np.expand_dims(data, axis=-1)
-                 elif data.ndim == 3:
-                     data = np.transpose(data, (2, 1, 0))
+                print(f"pydicom 解析单张 DICOM 警告: {e}，回退至 SimpleITK")
+                data = sitk.GetArrayFromImage(itk_img)
+                if data.ndim == 2:
+                    data = data.T
+                    data = np.expand_dims(data, axis=-1)
+                elif data.ndim == 3:
+                    data = np.transpose(data, (2, 1, 0))
+                elif data.ndim == 4:
+                    data = np.transpose(data, (3, 2, 1, 0))
         else:
             # 其他 3D 格式 (NIfTI 等)
             data = sitk.GetArrayFromImage(itk_img)
@@ -211,17 +234,19 @@ def get_main_array_from_loaded_data(loaded_data):
 
 def get_mask_array_from_loaded_data(loaded_data):
     """ 从 load_medical_image 的返回中获取 Mask 数组 """
-    if isinstance(loaded_data, dict): # NPZ文件
-        # 尝试获取 'mask' 或 'label' 键
+    if isinstance(loaded_data, dict):  # NPZ文件
         if 'mask' in loaded_data:
             return loaded_data['mask']
         elif 'label' in loaded_data:
             return loaded_data['label']
+        elif 'seg' in loaded_data:
+            return loaded_data['seg']
         else:
-            # 如果没有明确的mask/label键，可以根据需要返回None或抛出错误
-            print("NPZ文件未找到明确的 'mask' 或 'label' 数组。")
+            print("NPZ文件未找到明确的 'mask'/'label'/'seg' 数组。")
             return None
-    else: # 其他格式，目前不支持直接从非NPZ文件加载mask
+    elif isinstance(loaded_data, np.ndarray):  # NIfTI mask 直接是数组
+        return loaded_data.astype(np.int32)
+    else:
         return None
 
 def overlay_masks_on_slice(image_slice: np.ndarray, mask_slice: np.ndarray, alpha: float = 0.4, color_map: dict = COLOR_MAP) -> np.ndarray:
@@ -262,32 +287,58 @@ def overlay_masks_on_slice(image_slice: np.ndarray, mask_slice: np.ndarray, alph
     return blended_image
 
 
+def _detect_modality(loaded_data, itk_img, filename: str) -> str:
+    """从多种来源检测医学影像模态，优先级：DICOM标签 > NIfTI头 > 像素值推断"""
+    # 1. 尝试从 DICOM 标签读取
+    if filename.lower().endswith(('.dcm', '.dicom')):
+        full_path = os.path.join(DATA_DIR, filename)
+        if os.path.exists(full_path) and os.path.isfile(full_path):
+            try:
+                ds = pydicom.dcmread(full_path, stop_before_pixels=True)
+                if hasattr(ds, 'Modality'):
+                    return ds.Modality
+            except Exception:
+                pass
+
+    # 2. 尝试从 SimpleITK 元数据读取 (NIfTI 的 descrip/intent_name 字段可能包含模态)
+    if itk_img is not None:
+        try:
+            for key in itk_img.GetMetaDataKeys():
+                if 'modality' in key.lower():
+                    return itk_img.GetMetaData(key)
+        except Exception:
+            pass
+
+    # 3. 基于像素值范围推断
+    data = get_main_array_from_loaded_data(loaded_data)
+    min_val = data.min()
+    max_val = data.max()
+    if min_val < -500 and max_val > 500:
+        return "CT"
+    return "MR"
+
+
 @app.get("/api/inspect")
 def inspect_image(filename: str):
     try:
         loaded_data, itk_img = load_medical_image(filename)
-        
+
         # 从加载的数据中获取主图像数组进行检查
         data = get_main_array_from_loaded_data(loaded_data)
 
-        min_val = data.min()
-        max_val = data.max()
-        modality = "MR" 
-        if min_val < -500 and max_val > 500:
-            modality = "CT" 
-        
+        modality = _detect_modality(loaded_data, itk_img, filename)
+
         spacing = [1.0, 1.0, 1.0]
         direction = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
 
-        if itk_img is not None: # 只有SimpleITK加载的才有itk_img
+        if itk_img is not None:
             spacing = list(itk_img.GetSpacing())
             direction = list(itk_img.GetDirection())
         elif isinstance(loaded_data, dict) and 'spacing' in loaded_data:
-            # 尝试从 NPZ 中提取元数据 (如果保存时加入了的话)
             spacing = loaded_data['spacing'].tolist()
-        
+
         format_str = "NIfTI"
-        if filename.lower().endswith('.dcm') or os.path.isdir(os.path.join(DATA_DIR, filename)):
+        if filename.lower().endswith(('.dcm', '.dicom')) or os.path.isdir(os.path.join(DATA_DIR, filename)):
             format_str = "DICOM"
         elif filename.lower().endswith('.npz'):
             format_str = "NPZ"
@@ -296,13 +347,13 @@ def inspect_image(filename: str):
             "status": "success",
             "format": format_str,
             "shape": list(data.shape),
-            "spacing": spacing,                
+            "spacing": spacing,
             "direction": direction,
-            "modality": modality,              
+            "modality": modality,
             "msg": "解析成功"
         }
     except Exception as e:
-        print(f"Error inspecting image: {e}") 
+        print(f"Error inspecting image: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/slice")

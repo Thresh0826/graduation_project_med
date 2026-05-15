@@ -53,3 +53,9 @@ Thumbs.db
 .claude/
 __pycache__/
 *.pyc
+
+# 6. 测试数据集和临时文件
+med_data/Task05_Prostate*
+*.tar
+java_local.log
+deploy.sh
